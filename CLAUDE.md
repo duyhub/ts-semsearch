@@ -42,10 +42,10 @@ sponsor's published API contract exactly ("integration-ready" is an explicit jud
   schedule, prizes. Judging rubric + track prizes announced at Jul 11 kickoff; check then.
 - Problem source page: https://aitalent.genaifund.ai/tracks/mobility/maps-semantic-ranking
 - Full archive of all 65 AABW problems (context on competing tracks, the Built-with-AWS
-  stacking rule): `~/Coding/aabw/` (see `tracks/README.md`, strategy docs in `plans/`)
+  stacking rule): `~/Coding/hackathon-planning/` (see `tracks/README.md`, strategy docs in `plans/`)
 - **Built-with-AWS qualifier:** using Bedrock as a core component (embeddings via
   `cohere.embed-multilingual-v3` or Titan v2, query parsing via Claude) makes this entry
-  eligible for the AWS bonus track. See `~/Coding/aabw/tracks/built-with-aws/aws-ai-ml/README.md`.
+  eligible for the AWS bonus track. See `~/Coding/hackathon-planning/tracks/built-with-aws/aws-ai-ml/README.md`.
 - Embedding fallback model (offline safety): `BAAI/bge-m3` via sentence-transformers.
 - Langfuse tracing on LLM calls — sponsor awards judge-picked teams that use it.
 
