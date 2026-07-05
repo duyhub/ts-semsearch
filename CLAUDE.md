@@ -38,7 +38,7 @@ sponsor's published API contract exactly ("integration-ready" is an explicit jud
 
 ## Further research pointers
 
-- Event portal (login: duytran9123@gmail.com via Chrome): https://aitalent.genaifund.ai — tracks,
+- Event portal (already logged in via Chrome): https://aitalent.genaifund.ai — tracks,
   schedule, prizes. Judging rubric + track prizes announced at Jul 11 kickoff; check then.
 - Problem source page: https://aitalent.genaifund.ai/tracks/mobility/maps-semantic-ranking
 - Full archive of all 65 AABW problems (context on competing tracks, the Built-with-AWS
