@@ -276,10 +276,13 @@ judges watch live — the keyword-vs-semantic side-by-side. The full spec below 
 screen; `/metrics` (FR-15) is **P2 / cut-first** (the deck already carries the numbers, and a route
 judges never open is not worth night-of hours).
 
-Single page: search box (debounced) → left: ranked cards (name, badges for matched attrs,
-score bar chart per signal, reason line) → right: Leaflet map with numbered pins + anchor marker.
-Toggle: "Keyword (BM25 only)" vs "Semantic (full)" side-by-side columns — **this is the demo money
-shot** and gets the most polish.
+Single page. **Layout (design review DD1):** the two result columns own the full screen width —
+LEFT "Keyword (BM25)" vs RIGHT "Semantic (AI)", side by side — **this is the demo money shot** and
+gets the most polish. The Leaflet map is NOT a third column (three columns are illegible at 1080p
+from 5m); it lives in a collapsible panel below the fold that auto-opens for location queries
+(anchor detected, e.g. "gần hồ gươm"), where numbered pins + anchor marker actually add meaning.
+Search box (debounced) + query chips sit above both columns; the latency badge sits in the results
+header.
 
 **Demo money-shot touches (CEO review, SELECTIVE EXPANSION — accepted):**
 - **Query chips (Delight-1):** a row of ~8 one-tap canonical queries (covering the scenario
@@ -295,6 +298,47 @@ shot** and gets the most polish.
   (subtle emphasis, matched terms only — keep it to required/soft attrs so it doesn't add noise)
   so the query→result link is instant. Uses data already in the breakdown. Turns the explainability
   dimension into a visible query→result link at near-zero cost.
+
+### Design spec (design review)
+
+**Result card hierarchy (DD2 — signal breakdown).** Each card, top to bottom: rank number + POI
+name (largest text) → matched-attribute badges (✓ wifi, ✓ yên tĩnh) with Delight-4 highlighting →
+composite score + the **top-3 signals that drove this result's rank** as labeled colored bars (not
+all 7) → one-line Vietnamese reason → rating (`4.6★ · 1.560 đánh giá`) + distance. **Click/hover
+expands the full 7-signal breakdown** — the "audit any result" demo beat. Rationale: ~10 visible
+cards × 7 bars = 70 bars is illegible clutter at 5m; top-3 + expand serves explainability without
+the wall of color (subtraction default).
+
+**7-signal color system.** One fixed **colorblind-safe categorical palette** (e.g. Okabe-Ito or
+ColorBrewer Set2), one hue per signal, reused everywhere the signal appears (card bars, expanded
+breakdown). Defined as CSS variables (`--signal-semantic`, `--signal-distance`, …). Bars carry a
+text label too (color is never the only channel). Same hue = same signal across both columns so the
+comparison reads.
+
+**Interaction states (Pass 2 — was unspecified).**
+
+| State | What the user sees |
+|---|---|
+| Loading | Per-column skeleton cards (not a spinner); latency badge shows "…"; chips stay tappable |
+| Empty (`meta.source="fallback"`, C1 backstop) | Honest line: "Không có kết quả khớp — đây là các địa điểm phổ biến gần bạn" + the fallback results; never a bare "No results" |
+| Error (API 5xx/timeout) | Inline card in the results area: "Máy chủ đang bận, thử lại" + a retry button; the other column and chips stay usable |
+| No anchor (location query, gazetteer miss) | Map panel stays collapsed; a subtle note "Không xác định được vị trí neo" on affected cards; distance signal renders neutral, not blank |
+| Partial (semantic ready, map tiles slow) | Results render immediately; map panel shows its own loading state independently |
+
+**Typography.** A real Vietnamese-first typeface with full diacritic coverage — **Be Vietnam Pro**
+(purpose-built for Vietnamese) for display + body; NOT system-ui / Inter / Roboto as primary. Two
+weights max (e.g. 700 display, 400/500 body).
+
+**Legibility / contrast (projector, 5m).** Body text ≥ 18px (this is a projected demo, not a laptop
+screen); POI names ≥ 28px; all text ≥ 4.5:1 contrast on its background; dark theme with a single
+accent. Diacritics preserved everywhere (never fold in the UI — NFR-4).
+
+**Motion.** Animated re-rank (Delight-2): 250–300ms position transition, ease-out, position-keyed by
+`poi_id`; respect `prefers-reduced-motion` (fall back to instant reorder). No decorative motion.
+
+**Responsive scope (Pass 6).** **Projector/desktop-first (≥1280px) is the only supported target for
+the demo** — explicitly NOT responsive to mobile (see NOT-in-scope). Stated so no one spends demo
+hours on a breakpoint no judge will see.
 
 Secondary route `/metrics` (**P2, cut-first**): renders `reports/metrics.json` + ablation table as
 slides-ready visuals. Vietnamese UI labels; diacritics rendered correctly; legible at 1080p from 5m.
