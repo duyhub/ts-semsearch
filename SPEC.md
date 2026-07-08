@@ -26,6 +26,7 @@ tasco-semsearch/
 ├── pyproject.toml
 ├── data/
 │   ├── raw/ai_maps_track2_dataset_participants.xlsx
+│   ├── curated/admin_aliases.json  # hand-curated old↔new admin names (committed)
 │   └── derived/               # pois.parquet, eval.parquet, embeddings.npy (gitignored)
 ├── src/semsearch/
 │   ├── data.py                # xlsx → typed frames
@@ -102,6 +103,11 @@ subsets must be visible, not hidden inside the headline number.
   `Mixed Language Search`. Normalization passes English terms through untouched (multilingual
   embeddings handle them); the abbreviation dict maps common English category words
   ("coffee shop" → "quán cà phê", "hotel" → "khách sạn") for the BM25 side.
+- Typo canonicalizer (PRD FR-3): after folding + abbreviation expansion, query tokens
+  (len ≥ 4) that match no vocabulary entry are fuzzy-matched with edit distance ≤ 1 against
+  the closed vocabularies (category keywords, attribute taxonomy, gazetteer names) and
+  replaced by the canonical form ("yen tihn" → "yen tinh"). Query side only — documents
+  are clean.
 
 ## 4. Embedding document composition
 
@@ -157,6 +163,17 @@ reported number.
 1. **Rule parser (always runs):** folded-text regex + gazetteer. Category keywords, district/city
    patterns, attribute canonicalizer hits, "gần X" → anchor lookup (gazetteer = all POI names +
    districts + landmarks from dataset + ~20 hand-added city landmarks like "hồ gươm").
+   Coordinate detection (PRD FR-2): a decimal lat/lon pair in the query (regex, sanity-bounded
+   to Vietnam: lat 8–24, lon 102–110) becomes the anchor directly — nearby-search behavior.
+   Ambiguous gazetteer names (PRD FR-2) resolve by fixed policy: (a) city/district context in
+   the query, else (b) proximity to request `lat`/`lon`, else (c) highest-popularity candidate.
+   Admin-name aliasing (PRD FR-2): the gazetteer loads `data/curated/admin_aliases.json` —
+   hand-curated entries `{new_name, old_names[], city, lat, lon, old_districts[]}` covering the
+   July-2025 renamed wards/provinces for the four dataset cities (e.g. "phường sài gòn" →
+   old_districts ["Quận 1"], centroid coords; "quảng nam" → city "Đà Nẵng"). Matching runs on
+   folded text after abbreviation expansion; a new-name hit sets the anchor to the alias coords
+   and canonicalizes `district`/`city` to the dataset's (old) naming, so downstream filters
+   (§5) and outputs are untouched. Old names are dataset-native and pass through unchanged.
 2. **LLM parser (Bedrock Claude, structured output):** same QueryIntent JSON; prompt includes
    taxonomy vocab + category list so outputs are closed-vocabulary. 800ms budget → on timeout or
    schema failure, keep rule result. Merge policy: LLM fills fields the rules left null; rules win
@@ -206,9 +223,12 @@ visuals. Vietnamese UI labels.
 
 ## 11. Testing & gates
 
-- `tests/test_normalize.py` — folding, abbreviations ("cf q1 co wifi" → expected tokens).
+- `tests/test_normalize.py` — folding, abbreviations ("cf q1 co wifi" → expected tokens),
+  typo fuzzy-matching ("cafe yen tihn" → canonical tokens).
 - `tests/test_eval.py` — metric math on toy fixtures (hand-computed NDCG).
-- `tests/test_parse.py` — 15 canonical queries → expected QueryIntent (golden JSON).
+- `tests/test_parse.py` — ≥15 canonical queries → expected QueryIntent (golden JSON),
+  including coordinate-in-query, ambiguous-anchor, brand-query, and old-vs-new-admin-name
+  pair cases ("q1 tphcm" ≡ "phường sài gòn" → same anchor/district).
 - `tests/test_api_contract.py` — response shape strictly matches PDF PlaceResult; error
   responses match the PDF ErrorResponse shape and code table.
 - **Quality gates (enforced in runbook):**

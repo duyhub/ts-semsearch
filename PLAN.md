@@ -108,6 +108,9 @@ LLM step. Add **Langfuse** tracing on LLM calls (they award judge-picked teams).
 - Diacritic folding both ways: index folded + raw; queries often arrive un-accented ("ca phe yen tinh").
 - Abbreviation/slang expansion: "HCM/SG → TP.HCM", "cf/cafe → cà phê", "q1 → Quận 1".
 - Location anchors in Vietnamese ("gần hồ gươm", "quận 1") → resolve to coordinates → distance signal.
+- Old↔new admin names after the July-2025 restructuring ("phường sài gòn" ≡ "quận 1, tp.hcm") —
+  a curated alias table resolves both eras to the same place; strong live-demo moment since
+  mainstream map apps still fumble the new ward names.
 
 ## Build plan
 

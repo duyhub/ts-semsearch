@@ -32,8 +32,16 @@ existing Flutter app with a base-URL change.
 (12 categories — cafés, restaurants, hotels, malls, ATMs, gas stations, attractions, etc. —
 across TP.HCM, Hà Nội, Đà Nẵng, Đà Lạt), a 10-attribute taxonomy, 7 named ranking signals,
 and 60 labeled evaluation queries (25 Hard / 30 Medium / 5 Easy across 8 query categories,
-including 5 mixed-language). The `Public_` prefix on the eval sheet implies a **private eval
-set at judging** — everything must generalize; nothing may be fitted to specific queries.
+including 5 mixed-language). Judging uses a **private eval set** — sponsor-confirmed twice:
+"the jury will use different questions or datasets, but they will be similar to the public
+evaluation questions" (`docs/mobility-track-briefing-recap.md`) and "during judging, we will
+also use Hidden Evaluation Scenarios" (`docs/Q&A.md`) — everything must generalize; nothing
+may be fitted to specific queries.
+
+**Data-usage rules (organizer Q&A, `docs/Q&A.md`):** the provided dataset is synthetic and
+primary; **public data may be used to enrich or normalize it** — which explicitly legitimizes
+our curated additions (admin-name alias table, landmark gazetteer, abbreviation dictionary);
+no official Search API exists — teams build their own retrieval/ranking pipeline.
 
 ## 2. Goals / Non-Goals
 
@@ -90,7 +98,10 @@ set at judging** — everything must generalize; nothing may be fitted to specif
    ranked by distance from the provided lat/lon.
 6. **Mixed language:** queries blending Vietnamese and English (8% of the eval set) →
    handled by multilingual embeddings + normalization, not a special case that crashes.
-7. **Integrator flow:** `GET /v1/search?q=...&lat=...&lon=...&limit=10&lang=vi` with a
+7. **Old vs new administrative names:** "cà phê yên tĩnh phường sài gòn" returns the same
+   results as "cà phê yên tĩnh q1 tphcm" — the post-2025 ward name and the old district
+   name resolve to the same place; result labels keep the dataset's naming.
+8. **Integrator flow:** `GET /v1/search?q=...&lat=...&lon=...&limit=10&lang=vi` with a
    Bearer token → contract-exact `PlaceResult[]`; malformed request → contract-exact
    `ErrorResponse` with `requestId`.
 
@@ -109,13 +120,31 @@ under time pressure; **P2** = stretch.
   12-category vocabulary), location anchor (POI/landmark/district/city name → coordinates),
   required attributes (closed vocabulary = the 10-attribute taxonomy), soft preferences,
   open-time constraint, price ceiling. A rule-based parser provides this unconditionally.
-  *Acceptance:* golden tests on ≥15 canonical queries; intent fields also spot-checked
-  against the eval sheet's `expected_intent`/`expected_semantic_requirements` columns
-  (tune split only).
-- **FR-3 (P0) — Mixed-language and degraded input.** Non-accented, mixed vi/en, all-caps,
-  and misspelled-common-word queries return sensible results through the same pipeline.
-  Mixed Language is a first-class eval category (5/60 queries), not an edge case.
-  *Acceptance:* metrics reported for the Mixed Language eval subset; adversarial sweep (NFR-2).
+  Anchors also resolve from **coordinates typed into the query** ("10.7738, 106.704" →
+  nearby-search anchor), and **ambiguous place names** follow a fixed disambiguation
+  policy: city/district context in the query → request `lat`/`lon` focus → highest
+  popularity (both sponsor briefing expectations).
+  **Old and new Vietnamese administrative names are equivalent.** The July 2025
+  restructuring abolished the district level and merged/renamed wards ("quận 1, tphcm" ≈
+  today's "phường sài gòn, tp.hcm"; Đà Nẵng absorbed Quảng Nam; Đà Lạt became wards of
+  Lâm Đồng). Users type either era's names; both resolve to the same anchor and filters
+  via a curated alias table. The mapping is many-to-many (one old district → several new
+  wards and vice versa), so aliases carry representative coordinates and the parent
+  old-district set. Outputs keep the dataset's (old) naming — stable IDs and labels.
+  *Acceptance:* golden tests on ≥15 canonical queries, including coordinate-in-query,
+  ambiguous-anchor, and old-vs-new-admin-name pairs (same query in both namings → same
+  anchor and results); intent fields also spot-checked against the eval sheet's
+  `expected_intent`/`expected_semantic_requirements` columns (tune split only).
+- **FR-3 (P0) — Mixed-language, typos, and degraded input.** Non-accented, mixed vi/en,
+  all-caps, misspelled, and incomplete queries return sensible results through the same
+  pipeline. Mixed Language is a first-class eval category (5/60 queries), not an edge case.
+  Typo tolerance has an explicit mechanism — query tokens that match no vocabulary entry
+  are fuzzy-matched (edit distance ≤1) against the closed vocabularies (category keywords,
+  attribute taxonomy, gazetteer names), so "cafe yen tihn" still parses; embeddings absorb
+  the rest. **Brand queries** ("highlands gần đây") resolve via lexical brand fields +
+  popularity signal — named here so they get tests, not just luck.
+  *Acceptance:* metrics reported for the Mixed Language eval subset; unit tests for typo'd,
+  brand, and incomplete queries; adversarial sweep (NFR-2).
 - **FR-4 (P1) — LLM intent parser.** Claude on Bedrock with structured output, closed to the
   taxonomy/category vocabularies, layered over FR-2: LLM fills fields rules left empty; rules
   win on gazetteer-verified anchors. Hard timeout (800 ms) → rule result. Parses cached.
@@ -175,6 +204,11 @@ under time pressure; **P2** = stretch.
   Headers: `X-Request-Id` echoed into `requestId`; `X-Locale`/`X-Timezone` accepted
   (timezone informs open-now). `GET /health` for liveness. OpenAPI auto-generated and
   exported to `openapi.json`.
+  Note: organizers confirmed the challenge-doc JSON is "a recommended example, not a
+  mandatory schema" and the exact format is not evaluated (`docs/Q&A.md` §4). Exact-contract
+  match stays P0 **by strategy**, not compliance — it is how we take the "technical design &
+  production readiness" judging dimension; extending the schema (as `/v1/semantic-search`
+  does) is explicitly allowed.
   *Acceptance:* contract tests assert exact response/error shapes; gate G4 latency.
 - **FR-12 (P0) — Extended semantic endpoint.** `GET /v1/semantic-search`: same params,
   response adds per-signal `breakdown`, `reasons[]`, and parsed `intent` echo. This powers
@@ -205,7 +239,7 @@ under time pressure; **P2** = stretch.
   numbers included in submission notes.
 - **NFR-2 (P0) — Robustness.** Every eval query **plus** adversarial inputs (empty string,
   emoji, all-caps no-diacritics, 200-char rambling text, pure-English query, pure address,
-  unknown city) returns HTTP 200 with ≥1 result (or a contract-valid error for truly invalid
+  coordinate-only query, unknown city) returns HTTP 200 with ≥1 result (or a contract-valid error for truly invalid
   requests like missing `q`) and zero unhandled exceptions.
 - **NFR-3 (P0) — Offline resilience.** The full demo path (query → results → UI) has zero
   hard network dependencies: every Bedrock call has a timeout and a local fallback
@@ -242,12 +276,20 @@ NDCG grading: first expected id gain 3, second 2, remaining 1. All gate runs als
 per-difficulty (Hard/Medium/Easy) and per-query-category tables — Hard is 42% of the eval
 set, so a headline number that hides a Hard-query collapse is not acceptable.
 
-### Qualitative (judging asks, from the problem statement's success criteria)
+### Qualitative — the official judging dimensions (organizer Q&A, `docs/Q&A.md`)
 
-Semantic understanding beyond keywords (demo scenario 3 lands), explainable results (every
-demo result shows reasons), fast (<200 ms visibly instant on stage), real-world experience
-(side-by-side clearly beats keyword search), integration-ready (contract match + adapter
-demonstrated in Q&A).
+The organizers confirmed judging focuses on five dimensions and does **not** require IR
+metrics — teams "may include their own evaluation metrics, but this is optional." That is
+precisely why the gates above stay our requirement of record: self-reported metrics are the
+differentiator almost no team will bring, serving the first two dimensions as evidence.
+
+| Judging dimension | How we win it |
+|---|---|
+| Search relevance & semantic understanding | intent queries with no category word land (scenario 3); hybrid retrieval; measured, not asserted (G1–G3) |
+| Retrieval & ranking quality | 7-signal ranker mapped 1:1 to the sponsor's signals; ablation table proving each stage's contribution |
+| Explainable ranking | per-signal score breakdown + fact-derived reasons on every result (FR-7, FR-8) |
+| User experience | keyword-vs-semantic side-by-side, visibly instant (<200 ms), Vietnamese labels, map UI (FR-14) |
+| Technical design & production readiness | Tasco-contract API + OpenAPI + client adapter + fallback/latency/provenance notes (FR-11, FR-16, NFR-3) |
 
 ## 7. Deliverables
 
@@ -293,8 +335,9 @@ evaluation harness + `reports/` (metrics, ablation, embedding choice, latency).
 
 ## 10. Open Questions
 
-- Judging rubric and track-prize weighting — announced at Jul 11 kickoff; capture and
-  re-weight polish effort the same morning.
+- Judging dimension *weights* and track-prize details — the five dimensions themselves are
+  now known (`docs/Q&A.md`; see §6), but their relative weighting isn't; capture at the
+  Jul 11 kickoff and re-weight polish effort the same morning.
 - Whether organizers release additional/private queries at kickoff — if so they become a
   new eval split (no code changes; re-run tuning).
 - Deploy target (App Runner vs localhost+ngrok) — decide Jul 10 after measuring event-wifi
@@ -333,3 +376,10 @@ applied to SPEC; kept here as the audit trail against the sponsor sources):
    robustness case — the eval set contains 5 Mixed Language queries (8%) → SPEC §3.
 6. **Per-query-category metric reporting** alongside per-difficulty (FR-9) — needed to
    catch a Mixed Language or Discovery collapse that headline NDCG would hide → SPEC §2.
+7. **Coordinate-in-query anchors, typo fuzzy-matching, ambiguous-anchor disambiguation,
+   and explicit brand/incomplete-query handling** (FR-2, FR-3) — from the sponsor kickoff
+   briefing (`docs/mobility-track-briefing-recap.md`); "by direction" queries stay out of
+   scope (routing, sibling challenges) → SPEC §3, §7.
+8. **Old↔new administrative-name aliasing** (FR-2) — the July 2025 restructuring renamed
+   Vietnamese wards/districts ("quận 1, tphcm" ≈ "phường sài gòn"); the dataset and eval
+   queries may use either era. Team-sourced requirement, not in any sponsor doc → SPEC §7.

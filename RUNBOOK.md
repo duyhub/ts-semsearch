@@ -118,7 +118,8 @@ do Phases 5–6.
 ### Phase 8 — Integration + robustness (60 min, back to main session)
 > Merge worktrees. Gate G5: robustness sweep — every one of the 60 eval queries plus this
 > adversarial list (empty string, emoji, all-caps no-diacritics, 200-char rambling query, English
-> query, pure address) returns HTTP 200 with ≥1 result and no exception. Fix everything found.
+> query, pure address, coordinate-only query, unknown city) returns HTTP 200 with ≥1 result and
+> no exception. Fix everything found.
 > Re-run all gates G1–G5 and commit.
 
 ### Phase 9 — Submission artifacts (45 min)
