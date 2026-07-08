@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tasco Semantic Search — Demo money shot (mockup)</title>
+<!-- Static, fake-data mockup of SPEC §10. No backend. Build reference for the Next.js UI. -->
+<!-- Production uses "Be Vietnam Pro" (webfont). This mockup uses a system stack to avoid a
+     network dependency; swap in Be Vietnam Pro when building the real UI. -->
+<style>
+  :root{
+    /* colorblind-safe categorical palette (Okabe-Ito) — one hue per signal */
+    --signal-semantic:#3b9ae1;      /* blue */
+    --signal-attributes:#e69f00;    /* orange */
+    --signal-distance:#22b07d;      /* green */
+    --signal-rating:#cc79a7;        /* pink */
+    --signal-popularity:#56b4e9;    /* sky */
+    --signal-open:#f0d43a;          /* yellow */
+    --signal-review:#e0663a;        /* vermillion */
+
+    --bg:#0e1116;
+    --panel:#171b22;
+    --panel-2:#1e232c;
+    --line:#2a313c;
+    --ink:#f2f5f8;
+    --ink-dim:#9aa6b2;
+    --accent:#3b9ae1;
+    --good:#22b07d;
+    --bad:#e0663a;
+    --radius:14px;
+    font-synthesis:none;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Be Vietnam Pro","Segoe UI",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:28px 34px 40px}
+
+  header.topbar{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+  .brand{font-weight:800;font-size:26px;letter-spacing:-.2px}
+  .brand .dot{color:var(--accent)}
+  .brand small{display:block;font-weight:500;font-size:14px;color:var(--ink-dim);letter-spacing:0}
+
+  .searchwrap{flex:1}
+  .searchbar{display:flex;align-items:center;gap:12px;background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:14px 20px}
+  .searchbar svg{flex:none;opacity:.7}
+  .searchbar input{flex:1;background:none;border:none;outline:none;color:var(--ink);
+    font-family:inherit;font-size:20px;font-weight:500}
+  .searchbar input::placeholder{color:var(--ink-dim)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .chip{background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);
+    padding:8px 14px;border-radius:999px;font-size:15px;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink);border-color:var(--accent)}
+  .chip.active{background:rgba(59,154,225,.14);border-color:var(--accent);color:#cfe8fb}
+
+  .resulthdr{display:flex;align-items:baseline;justify-content:space-between;margin:24px 2px 14px}
+  .resulthdr .q{font-size:17px;color:var(--ink-dim)}
+  .resulthdr .q b{color:var(--ink);font-weight:700}
+  .latency{display:inline-flex;align-items:center;gap:7px;background:rgba(34,176,125,.13);
+    color:var(--good);border:1px solid rgba(34,176,125,.35);padding:6px 12px;border-radius:999px;
+    font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .latency .pulse{width:7px;height:7px;border-radius:50%;background:var(--good)}
+
+  .columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 18px}
+  .col.semantic{border-color:rgba(59,154,225,.5);box-shadow:0 0 0 1px rgba(59,154,225,.25),0 14px 40px -22px rgba(59,154,225,.6)}
+  .col-head{display:flex;align-items:center;gap:10px;margin:2px 4px 14px}
+  .col-head .tag{font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    padding:5px 10px;border-radius:8px}
+  .col.keyword .tag{background:#2a313c;color:var(--ink-dim)}
+  .col.semantic .tag{background:var(--accent);color:#04121f}
+  .col-head .sub{font-size:14px;color:var(--ink-dim)}
+
+  .card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;
+    padding:14px 15px;margin-bottom:12px}
+  .card:last-child{margin-bottom:0}
+  .card.dim{opacity:.62}
+  .card-top{display:flex;gap:12px;align-items:flex-start}
+  .rank{flex:none;width:30px;height:30px;border-radius:8px;background:#2a313c;color:var(--ink-dim);
+    font-weight:800;font-size:16px;display:grid;place-items:center}
+  .col.semantic .rank{background:var(--accent);color:#04121f}
+  .name{font-size:22px;font-weight:700;line-height:1.15;letter-spacing:-.2px}
+  .meta{margin-top:3px;font-size:14px;color:var(--ink-dim)}
+  .stars{color:#ffcf4d;font-weight:600}
+
+  .badges{display:flex;flex-wrap:wrap;gap:7px;margin:11px 0 4px}
+  .badge{font-size:14px;font-weight:600;padding:5px 10px;border-radius:8px;
+    background:rgba(34,176,125,.14);color:#7ee0b6;border:1px solid rgba(34,176,125,.3)}
+  .badge .x{opacity:.8;margin-right:3px}
+  .badge.match{background:rgba(230,159,0,.18);color:#ffd479;border-color:rgba(230,159,0,.45)} /* Delight-4 highlight */
+
+  .reason{font-size:16px;color:#d7dee6;margin:9px 0 12px;line-height:1.4}
+
+  .scoreline{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .composite{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .bars{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+  .bar-row{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px}
+  .bar-label{font-size:13px;color:var(--ink-dim)}
+  .bar-track{height:9px;background:#2a313c;border-radius:999px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:999px}
+  .bar-val{font-size:12px;color:var(--ink-dim);text-align:right;font-variant-numeric:tabular-nums}
+
+  details.full{margin-top:11px;border-top:1px dashed var(--line);padding-top:9px}
+  details.full summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;list-style:none}
+  details.full summary::-webkit-details-marker{display:none}
+  details.full[open] summary{margin-bottom:9px}
+
+  .mappanel{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px}
+  .mappanel .mp-head{display:flex;align-items:center;justify-content:space-between}
+  .mappanel .mp-head .t{font-weight:700;font-size:16px}
+  .mappanel .mp-head .hint{font-size:13px;color:var(--ink-dim)}
+  .maparea{margin-top:12px;height:150px;border-radius:10px;position:relative;overflow:hidden;
+    background:linear-gradient(135deg,#1b2b24,#16202b);border:1px solid var(--line)}
+  .pin{position:absolute;width:26px;height:26px;border-radius:50% 50% 50% 2px;transform:rotate(45deg);
+    display:grid;place-items:center;font-weight:800;font-size:12px;color:#04121f;background:var(--accent);
+    box-shadow:0 6px 14px -4px rgba(0,0,0,.6)}
+  .pin span{transform:rotate(-45deg)}
+  .pin.anchor{background:var(--signal-attributes);border-radius:50%}
+  .footnote{margin-top:22px;text-align:center;color:var(--ink-dim);font-size:13px}
+  .footnote code{background:var(--panel-2);padding:2px 7px;border-radius:6px;color:#cfe8fb}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">Tasco<span class="dot">.</span>tìm<small>Semantic search &amp; ranking</small></div>
+  <div class="searchwrap">
+    <div class="searchbar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9aa6b2" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input value="quán cà phê yên tĩnh để làm việc" aria-label="Tìm kiếm" />
+    </div>
+    <div class="chips">
+      <span class="chip active">quán cà phê yên tĩnh để làm việc</span>
+      <span class="chip">cafe có wifi gần hồ gươm</span>
+      <span class="chip">nơi hẹn hò lãng mạn có view đẹp</span>
+      <span class="chip">cây xăng 24/7 gần đây</span>
+      <span class="chip">khách sạn gần biển Đà Nẵng</span>
+      <span class="chip">quan cafe yen tinh gan q1</span>
+    </div>
+  </div>
+</header>
+
+<div class="resulthdr">
+  <div class="q">Kết quả cho <b>“quán cà phê yên tĩnh để làm việc”</b></div>
+  <div class="latency"><span class="pulse"></span>41 ms</div>
+</div>
+
+<div class="columns">
+
+  <!-- KEYWORD (BM25) — matches literal tokens, returns loud/irrelevant -->
+  <section class="col keyword">
+    <div class="col-head"><span class="tag">Keyword · BM25</span><span class="sub">khớp từ khóa</span></div>
+
+    <div class="card dim">
+      <div class="card-top"><div class="rank">1</div>
+        <div><div class="name">Cà Phê Sân Thượng Ồn Ào</div>
+        <div class="meta"><span class="stars">3.9★</span> · 210 đánh giá · Quận 3</div></div></div>
+      <div class="reason">Khớp từ “cà phê”. Rooftop, nhạc lớn, không có ổ cắm.</div>
+    </div>
+
+    <div class="card dim">
+      <div class="card-top"><div class="rank">2</div>
+        <div><div class="name">Highlands Coffee — Vincom</div>
+        <div class="meta"><span class="stars">4.1★</span> · 5.400 đánh giá · Quận 1</div></div></div>
+      <div class="reason">Khớp từ “cà phê”. Trung tâm thương mại, đông và ồn.</div>
+    </div>
+
+    <div class="card dim">
+      <div class="card-top"><div class="rank">3</div>
+        <div><div class="name">Cà Phê Bệt Công Viên</div>
+        <div class="meta"><span class="stars">4.0★</span> · 320 đánh giá · Quận 1</div></div></div>
+      <div class="reason">Khớp từ “cà phê”. Ngoài trời, không wifi, không bàn làm việc.</div>
+    </div>
+
+    <div class="card dim">
+      <div class="card-top"><div class="rank">4</div>
+        <div><div class="name">The Coffee House — Nguyễn Huệ</div>
+        <div class="meta"><span class="stars">4.2★</span> · 3.100 đánh giá · Quận 1</div></div></div>
+      <div class="reason">Khớp từ “cà phê”. Phố đi bộ, rất đông vào cuối tuần.</div>
+    </div>
+  </section>
+
+  <!-- SEMANTIC (AI) — understands intent: quiet, work-friendly -->
+  <section class="col semantic">
+    <div class="col-head"><span class="tag">Semantic · AI</span><span class="sub">hiểu ý định: yên tĩnh, làm việc</span></div>
+
+    <!-- card 1 -->
+    <div class="card">
+      <div class="card-top"><div class="rank">1</div>
+        <div><div class="name">The Workshop Coffee</div>
+        <div class="meta"><span class="stars">4.6★</span> · 1.560 đánh giá · Quận 1 · mở đến 22:30</div></div></div>
+      <div class="badges">
+        <span class="badge match"><span class="x">✓</span>yên tĩnh</span>
+        <span class="badge match"><span class="x">✓</span>phù hợp làm việc</span>
+        <span class="badge"><span class="x">✓</span>wifi</span>
+        <span class="badge"><span class="x">✓</span>ổ cắm</span>
+      </div>
+      <div class="reason">Không gian yên tĩnh, wifi mạnh, nhiều ổ cắm — phù hợp làm việc cả buổi.</div>
+      <div class="scoreline"><span class="composite">Điểm 0.94</span></div>
+      <div class="bars">
+        <div class="bar-row"><span class="bar-label">Ngữ nghĩa</span><span class="bar-track"><span class="bar-fill" style="width:92%;background:var(--signal-semantic)"></span></span><span class="bar-val">.92</span></div>
+        <div class="bar-row"><span class="bar-label">Thuộc tính</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--signal-attributes)"></span></span><span class="bar-val">1.0</span></div>
+        <div class="bar-row"><span class="bar-label">Đánh giá</span><span class="bar-track"><span class="bar-fill" style="width:88%;background:var(--signal-rating)"></span></span><span class="bar-val">.88</span></div>
+      </div>
+      <details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Khoảng cách</span><span class="bar-track"><span class="bar-fill" style="width:50%;background:var(--signal-distance)"></span></span><span class="bar-val">.50</span></div>
+          <div class="bar-row"><span class="bar-label">Phổ biến</span><span class="bar-track"><span class="bar-fill" style="width:74%;background:var(--signal-popularity)"></span></span><span class="bar-val">.74</span></div>
+          <div class="bar-row"><span class="bar-label">Đang mở</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--signal-open)"></span></span><span class="bar-val">1.0</span></div>
+          <div class="bar-row"><span class="bar-label">Tags/mô tả</span><span class="bar-track"><span class="bar-fill" style="width:80%;background:var(--signal-review)"></span></span><span class="bar-val">.80</span></div>
+        </div>
+      </details>
+    </div>
+
+    <!-- card 2 -->
+    <div class="card">
+      <div class="card-top"><div class="rank">2</div>
+        <div><div class="name">Nhã Coffee &amp; Working Space</div>
+        <div class="meta"><span class="stars">4.7★</span> · 890 đánh giá · Quận 3 · mở đến 23:00</div></div></div>
+      <div class="badges">
+        <span class="badge match"><span class="x">✓</span>yên tĩnh</span>
+        <span class="badge match"><span class="x">✓</span>phù hợp làm việc</span>
+        <span class="badge"><span class="x">✓</span>wifi</span>
+        <span class="badge"><span class="x">✓</span>ổ cắm</span>
+      </div>
+      <div class="reason">Coworking café, bàn rộng, ổ cắm mọi chỗ ngồi, rất yên.</div>
+      <div class="scoreline"><span class="composite">Điểm 0.91</span></div>
+      <div class="bars">
+        <div class="bar-row"><span class="bar-label">Ngữ nghĩa</span><span class="bar-track"><span class="bar-fill" style="width:89%;background:var(--signal-semantic)"></span></span><span class="bar-val">.89</span></div>
+        <div class="bar-row"><span class="bar-label">Thuộc tính</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--signal-attributes)"></span></span><span class="bar-val">1.0</span></div>
+        <div class="bar-row"><span class="bar-label">Đánh giá</span><span class="bar-track"><span class="bar-fill" style="width:91%;background:var(--signal-rating)"></span></span><span class="bar-val">.91</span></div>
+      </div>
+      <details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Khoảng cách</span><span class="bar-track"><span class="bar-fill" style="width:50%;background:var(--signal-distance)"></span></span><span class="bar-val">.50</span></div>
+          <div class="bar-row"><span class="bar-label">Phổ biến</span><span class="bar-track"><span class="bar-fill" style="width:61%;background:var(--signal-popularity)"></span></span><span class="bar-val">.61</span></div>
+          <div class="bar-row"><span class="bar-label">Đang mở</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--signal-open)"></span></span><span class="bar-val">1.0</span></div>
+          <div class="bar-row"><span class="bar-label">Tags/mô tả</span><span class="bar-track"><span class="bar-fill" style="width:85%;background:var(--signal-review)"></span></span><span class="bar-val">.85</span></div>
+        </div>
+      </details>
+    </div>
+
+    <!-- card 3 -->
+    <div class="card">
+      <div class="card-top"><div class="rank">3</div>
+        <div><div class="name">Tranquil Books &amp; Coffee</div>
+        <div class="meta"><span class="stars">4.5★</span> · 1.120 đánh giá · Quận 1 · mở đến 22:00</div></div></div>
+      <div class="badges">
+        <span class="badge match"><span class="x">✓</span>yên tĩnh</span>
+        <span class="badge"><span class="x">✓</span>wifi</span>
+        <span class="badge"><span class="x">✓</span>không gian đọc sách</span>
+      </div>
+      <div class="reason">Café kết hợp hiệu sách, quy định giữ yên lặng — rất hợp tập trung.</div>
+      <div class="scoreline"><span class="composite">Điểm 0.87</span></div>
+      <div class="bars">
+        <div class="bar-row"><span class="bar-label">Ngữ nghĩa</span><span class="bar-track"><span class="bar-fill" style="width:86%;background:var(--signal-semantic)"></span></span><span class="bar-val">.86</span></div>
+        <div class="bar-row"><span class="bar-label">Thuộc tính</span><span class="bar-track"><span class="bar-fill" style="width:78%;background:var(--signal-attributes)"></span></span><span class="bar-val">.78</span></div>
+        <div class="bar-row"><span class="bar-label">Đánh giá</span><span class="bar-track"><span class="bar-fill" style="width:84%;background:var(--signal-rating)"></span></span><span class="bar-val">.84</span></div>
+      </div>
+      <details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary>
+        <div class="bars">
+          <div class="bar-row"><span class="bar-label">Khoảng cách</span><span class="bar-track"><span class="bar-fill" style="width:50%;background:var(--signal-distance)"></span></span><span class="bar-val">.50</span></div>
+          <div class="bar-row"><span class="bar-label">Phổ biến</span><span class="bar-track"><span class="bar-fill" style="width:69%;background:var(--signal-popularity)"></span></span><span class="bar-val">.69</span></div>
+          <div class="bar-row"><span class="bar-label">Đang mở</span><span class="bar-track"><span class="bar-fill" style="width:100%;background:var(--signal-open)"></span></span><span class="bar-val">1.0</span></div>
+          <div class="bar-row"><span class="bar-label">Tags/mô tả</span><span class="bar-track"><span class="bar-fill" style="width:77%;background:var(--signal-review)"></span></span><span class="bar-val">.77</span></div>
+        </div>
+      </details>
+    </div>
+  </section>
+</div>
+
+<!-- Map: collapsed by default; auto-opens for location queries (DD1) -->
+<div class="mappanel">
+  <div class="mp-head">
+    <span class="t">Bản đồ</span>
+    <span class="hint">Tự mở khi truy vấn có vị trí (vd. “gần hồ gươm”) — thu gọn cho truy vấn này</span>
+  </div>
+  <div class="maparea" aria-hidden="true">
+    <div class="pin" style="left:34%;top:44%"><span>1</span></div>
+    <div class="pin" style="left:52%;top:60%"><span>2</span></div>
+    <div class="pin" style="left:64%;top:38%"><span>3</span></div>
+    <div class="pin anchor" style="left:47%;top:30%"><span style="color:#04121f">⚑</span></div>
+  </div>
+</div>
+
+<div class="footnote">
+  Mockup tĩnh (dữ liệu giả) của <code>SPEC §10</code> · money-shot demo · Keyword vs Semantic ·
+  top-3 tín hiệu + mở rộng 7 · bảng màu an toàn cho người mù màu
+</div>
+
+</body>
+</html>
