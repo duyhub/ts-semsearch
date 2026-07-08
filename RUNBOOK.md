@@ -7,9 +7,9 @@ while you review, steer, and prep the pitch.
 
 - **You are the tech lead, Claude Code is the team.** You review gate results and make calls;
   agents write ~all code.
-- **Everything is spec-driven.** The repo is seeded (before the event) with `SPEC.md` (the
-  implementation doc), `CLAUDE.md` (below), the xlsx, and the API PDF. Agents never need to
-  invent requirements — only satisfy gates.
+- **Everything is spec-driven.** The repo is seeded (before the event) with `PRD.md` (the
+  requirements doc), `SPEC.md` (the implementation doc), `CLAUDE.md` (below), the xlsx, and
+  the API PDF. Agents never need to invent requirements — only satisfy gates.
 - **Phase-gated, test-first.** Each phase ends with a command whose output you (and the agent)
   can verify: pytest green + metric thresholds from SPEC §11. Commit at every passed gate.
 - **Fresh context per phase.** Run `/clear` between phases; specs live in files so nothing is
@@ -36,7 +36,7 @@ you lose ~30 min, nothing else.
 
 ```markdown
 # Project: Tasco semantic search & ranking (AABW hackathon, 24h)
-Read SPEC.md before any work. It is the single source of truth.
+Read PRD.md (requirements — canonical) and SPEC.md (implementation design) before any work.
 
 ## Rules
 - Python 3.11, uv. Run tests with `uv run pytest -q`. Type hints everywhere, no heavy frameworks.
@@ -57,9 +57,9 @@ Run phases sequentially in one main session (`/clear` between them). Phases mark
 parallel worktree sessions.
 
 ### Phase 0 — Plan review (15 min, plan mode)
-> Read SPEC.md, CLAUDE.md, and inspect data/raw/*.xlsx (all sheets). Produce a build plan for
-> Phases 1–3 only: files, function signatures, test list. Flag any mismatch between SPEC and the
-> actual data schema before we write code.
+> Read PRD.md, SPEC.md, CLAUDE.md, and inspect data/raw/*.xlsx (all sheets). Produce a build
+> plan for Phases 1–3 only: files, function signatures, test list. Flag any mismatch between
+> PRD/SPEC and the actual data schema before we write code.
 
 Approve the plan; fix schema surprises now, not at hour 6.
 

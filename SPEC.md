@@ -1,7 +1,8 @@
 # Plan A — Implementation Spec: Tasco Semantic Search & Ranking
 
-Code-level blueprint. This file is the source of truth for the build; the Claude Code runbook
-(`semantic-ranking-claude-runbook.md`) executes it phase by phase.
+Code-level blueprint: the "how". **`PRD.md` is the canonical requirements doc ("what & why");
+where the two disagree, the PRD wins.** The Claude Code runbook (`RUNBOOK.md`) executes this
+spec phase by phase.
 
 ## 0. Stack decisions (final)
 
@@ -82,8 +83,10 @@ class RankedResult:
 ```
 
 Eval rows (`Public_Evaluation`): `query_id, input_query, expected_top_poi_ids (";"-sep),
-difficulty, skills_tested` → relevant set = expected ids, order = graded relevance
-(first id gain 3, second 2, rest 1) for NDCG.
+query_category, difficulty, skills_tested` → relevant set = expected ids, order = graded
+relevance (first id gain 3, second 2, rest 1) for NDCG. All metric reports break down
+per-difficulty **and per-query_category** (PRD FR-9) — the Mixed Language and Discovery
+subsets must be visible, not hidden inside the headline number.
 
 ## 3. Vietnamese normalization (`normalize.py`)
 
@@ -95,6 +98,10 @@ difficulty, skills_tested` → relevant set = expected ids, order = graded relev
 - Both-ways index: BM25 tokenizes folded text; raw preserved for display (API doc requires
   diacritics preserved in responses).
 - Attribute canonicalizer: map free text → taxonomy vocab ("yen tinh" → "yên tĩnh").
+- Mixed vi/en queries are first-class, not adversarial (PRD FR-3): 5/60 eval queries are
+  `Mixed Language Search`. Normalization passes English terms through untouched (multilingual
+  embeddings handle them); the abbreviation dict maps common English category words
+  ("coffee shop" → "quán cà phê", "hotel" → "khách sạn") for the BM25 side.
 
 ## 4. Embedding document composition
 
@@ -118,20 +125,27 @@ single matvec. Disk-cache query embeddings keyed by text hash.
 
 ## 6. Ranking (`rank.py`)
 
-All signals normalized to [0,1]:
+Seven signals, mapping 1:1 to the sponsor's `Ranking_Signals` sheet (PRD FR-7). All
+normalized to [0,1]:
 
-| Signal | Definition |
-|---|---|
-| `semantic` | min-max-scaled cosine sim within candidate set |
-| `attributes` | matched required+soft attrs / requested (taxonomy canonical) |
-| `distance` | `exp(-d_km / 3.0)` from anchor; 0.5 neutral if no anchor |
-| `rating` | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, m=200, C=global mean, scaled from [3.5,5] |
-| `popularity` | popularity_score / 100 |
-| `open_now` | 1 if open at query time / satisfies `open_after`, else 0.3 (0.5 if unknown) |
+| Signal | Sponsor signal | Definition |
+|---|---|---|
+| `semantic` | relevance_score | min-max-scaled cosine sim within candidate set |
+| `attributes` | business_attributes | matched required+soft attrs / requested (taxonomy canonical, structured `attributes` field only) |
+| `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; 0.5 neutral if no anchor |
+| `rating` | rating_score | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, m=200, C=global mean, scaled from [3.5,5] |
+| `popularity` | popularity_score | popularity_score / 100 |
+| `open_now` | business_attributes (time) | 1 if open at query time / satisfies `open_after`, else 0.3 (0.5 if unknown) |
+| `review` | review_signal | fraction of requested needs (required+soft, folded) found in POI `tags` + `description` — distinct from the structured attributes field |
+
+`freshness_score` is the sponsor's 7th listed signal but the dataset has no recency field —
+it is **not implemented**; the methodology write-up documents it as a production roadmap item
+(rank recently-verified data higher). Every sponsor signal is thus implemented or explicitly
+accounted for.
 
 `LinearRanker(weights).rank(intent, candidates)` → sorted `RankedResult` with per-signal
-breakdown retained. Initial weights: semantic .35, attributes .25, distance .15, rating .12,
-popularity .08, open .05.
+breakdown retained. Initial weights: semantic .32, attributes .22, distance .15, rating .10,
+popularity .08, open .05, review .08.
 
 **Tuning (`tune.py`):** split eval 40 tune / 20 test **stratified by difficulty** (fixed seed,
 split committed to repo). Coordinate ascent on NDCG@5 over weight grid (0–0.5 step 0.05,
@@ -159,14 +173,24 @@ checking all numbers/attrs appear in source facts; on violation, fall back to bu
 
 ## 9. API (`api.py`) — match the Tasco PDF contract
 
-- `GET /v1/search?q&lat&lon&radiusMeters&category&limit&lang` → `{query, results: PlaceResult[],
-  meta}` with PlaceResult exactly as PDF: `id ("poi:C001"), type, name, label, address, category,
-  coordinates{lat,lon}, distanceMeters, score, source, tags`.
+- `GET /v1/search?q&lat&lon&radiusMeters&bbox&category&limit&lang` → `{query, results:
+  PlaceResult[], meta}` with PlaceResult exactly as PDF: `id ("poi:C001"), type, name, label,
+  address, category, coordinates{lat,lon}, distanceMeters, score, source, tags`. Param
+  semantics per PDF: `q` required; `bbox` = `minLon,minLat,maxLon,maxLat`; `limit` default 10,
+  max 20; `lang` default `vi`.
+- Aliases: `GET /search` and `GET /v1/geocode-search` (both in the PDF).
+- Errors use the PDF `ErrorResponse` shape: `{error: {code, message, details}, requestId}` with
+  the documented code set — 400 `invalid_request` (e.g. missing `q`), 401 `unauthorized`,
+  403 `forbidden`, 404 `not_found`, 408 `timeout`, 429 `rate_limited`, 500 `internal_error`,
+  503 `service_unavailable`.
+- Headers: echo `X-Request-Id` into `requestId` (generate one if absent); accept `X-Locale`
+  and `X-Timezone` (timezone feeds the open_now signal; default `Asia/Ho_Chi_Minh`).
 - `GET /v1/semantic-search?...` → extended: adds `breakdown`, `reasons`, `intent` echo.
 - `GET /health`. Auth: accept anonymous; honor `Authorization: Bearer` / `X-API-Key` if configured
   via env. Config: `BASE_URL`, `EMBED_PROVIDER`, `BEDROCK_REGION`.
 - Auto OpenAPI at `/docs`; export `openapi.json` to repo root (submission artifact).
-- Also serve `alias GET /search` (PDF mock-server alias).
+- Optional P2 (PRD FR-13): `GET /v1/poi/{id}` (alias `/poi/{id}`) with `include=ai_summary`
+  served by the explanation layer.
 
 **Latency budget:** parse(rules) 5ms + cached-LLM 0ms + BM25 2ms + dense matvec 1ms + rank 2ms
 → **p95 < 150ms** without cold LLM; first-seen query with LLM parse < 1s. `bench_latency.py`
@@ -185,7 +209,8 @@ visuals. Vietnamese UI labels.
 - `tests/test_normalize.py` — folding, abbreviations ("cf q1 co wifi" → expected tokens).
 - `tests/test_eval.py` — metric math on toy fixtures (hand-computed NDCG).
 - `tests/test_parse.py` — 15 canonical queries → expected QueryIntent (golden JSON).
-- `tests/test_api_contract.py` — response shape strictly matches PDF PlaceResult.
+- `tests/test_api_contract.py` — response shape strictly matches PDF PlaceResult; error
+  responses match the PDF ErrorResponse shape and code table.
 - **Quality gates (enforced in runbook):**
   - G1 BM25 baseline: Recall@5 ≥ 0.55 (tune split)
   - G2 hybrid > max(bm25, dense) on NDCG@5 (tune)

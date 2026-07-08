@@ -12,10 +12,11 @@ tĩnh để làm việc" (quiet café to work from), "nơi hẹn hò ở quận 
 Keyword search misses this intent. We build an AI retrieval + ranking engine that understands
 query meaning and returns relevant POIs **with explanations**.
 
-**What we're building (see SPEC.md for the full design):** Vietnamese query understanding
-(diacritic folding, abbreviation expansion, LLM intent parse with rule-based fallback) → hybrid
-retrieval (BM25 + multilingual embeddings, RRF fusion) → interpretable 6-signal linear re-ranker
-(semantic, attributes, distance, rating, popularity, open-now) → signal-derived explanations →
+**What we're building (requirements in PRD.md, design in SPEC.md):** Vietnamese query
+understanding (diacritic folding, abbreviation expansion, LLM intent parse with rule-based
+fallback) → hybrid retrieval (BM25 + multilingual embeddings, RRF fusion) → interpretable
+7-signal linear re-ranker (semantic, attributes, distance, rating, popularity, open-now,
+review/tags — mapping 1:1 to the sponsor's published signals) → signal-derived explanations →
 FastAPI implementing Tasco's official `/v1/search` contract → Leaflet demo UI with
 keyword-vs-semantic side-by-side.
 
@@ -27,7 +28,8 @@ sponsor's published API contract exactly ("integration-ready" is an explicit jud
 
 | Resource | What it contains |
 |---|---|
-| `SPEC.md` | **Source of truth.** Repo layout, data contracts, module-by-module design, signal formulas, tuning protocol, API contract, quality gates G1–G5 (§11) |
+| `PRD.md` | **Canonical requirements (what & why).** Goals/non-goals, personas, FR/NFR with priorities, success metrics, deliverables, risks, traceability. Wins over SPEC.md on conflict |
+| `SPEC.md` | **Implementation design (how).** Repo layout, data contracts, module-by-module design, signal formulas, tuning protocol, API contract, quality gates G1–G5 (§11) |
 | `RUNBOOK.md` | Phase-by-phase execution plan with prompts, gates, parallelization (worktrees for UI/API), contingency table |
 | `PLAN.md` | Strategy: why this problem, judge psychology, demo script, pre-event schedule, submission checklist |
 | `docs/problem-statement.md` | The official problem statement (objective, deliverables, submission requirements, suggested architecture) |

@@ -2,10 +2,13 @@
 
 **Product:** AI-powered semantic retrieval and ranking engine for Vietnamese POI search,
 integration-ready with the Tasco Maps platform.
+
 **Context:** Agentic AI Build Week 2026 (GenAI Fund, HCMC) — Mobility track, problem P7,
-sponsored by Tasco Maps. Build window Jul 11 09:00 → Jul 12 09:00; Demo Day Jul 12.
+sponsored by Tasco Maps.
+
 **Status of this doc:** canonical requirements ("what & why"). `SPEC.md` holds the
 implementation design ("how"); where the two disagree, this PRD wins (known deltas: §11).
+
 **Primary sources:** `docs/problem-statement.md`, `docs/tasco_api.pdf`,
 `data/raw/ai_maps_track2_dataset_participants.xlsx` (all requirements below trace to these).
 
@@ -315,20 +318,18 @@ evaluation harness + `reports/` (metrics, ablation, embedding choice, latency).
 | FR-16, FR-17 | §12 artifacts, §0 stack (tracing/deploy) | submission checklist |
 | NFR-1…7 | §9, §11, CLAUDE.md rules | G4, G5 |
 
-**Deltas — this PRD requires things SPEC.md currently omits** (SPEC to be amended during
-the corresponding build phase):
+**Deltas — requirements this PRD introduced that SPEC.md originally omitted** (all now
+applied to SPEC; kept here as the audit trail against the sponsor sources):
 
-1. **`bbox` request parameter** on `/v1/search` (PDF supported-parameter table) — SPEC §9
-   omits it. Also `limit` semantics: default 10, max 20.
+1. **`bbox` request parameter** on `/v1/search` (PDF supported-parameter table), plus
+   `limit` semantics: default 10, max 20 → SPEC §9.
 2. **Contract `ErrorResponse`** shape (`error.code/message/details`, `requestId`) and the
-   full error-code table — SPEC mentions error codes only in passing.
+   full error-code table → SPEC §9, §11 tests.
 3. **`/v1/geocode-search` alias** and `X-Request-Id`/`X-Locale`/`X-Timezone` header
-   handling — SPEC lists only the `/search` alias.
+   handling → SPEC §9.
 4. **`review_signal` as a distinct 7th signal** (tags/description match) and an explicit
-   `freshness` disposition — SPEC's ranker has 6 signals and never mentions the sponsor's
-   `review_signal`/`freshness`; FR-7 requires all seven accounted for.
-5. **Mixed-language queries as a first-class requirement** (FR-3) — SPEC treats English
-   input only as an adversarial robustness case; the eval set contains 5 Mixed Language
-   queries (8%).
+   `freshness` disposition — FR-7 requires all seven sponsor signals accounted for → SPEC §6.
+5. **Mixed-language queries as a first-class requirement** (FR-3), not just an adversarial
+   robustness case — the eval set contains 5 Mixed Language queries (8%) → SPEC §3.
 6. **Per-query-category metric reporting** alongside per-difficulty (FR-9) — needed to
-   catch a Mixed Language or Discovery collapse that headline NDCG would hide.
+   catch a Mixed Language or Discovery collapse that headline NDCG would hide → SPEC §2.
