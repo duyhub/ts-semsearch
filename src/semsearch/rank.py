@@ -18,7 +18,7 @@ from .data import POI, QueryIntent
 from .geo import haversine
 from .normalize import fold
 
-SIGNALS = ("semantic", "attributes", "distance", "rating", "popularity", "open_now", "review")
+SIGNALS = ("semantic", "attributes", "category", "distance", "rating", "popularity", "open_now", "review")
 
 # Fixed cosine calibration band (OV6): a 0.30 cosine reads as 0, 0.75+ as 1.
 COS_LO, COS_HI = 0.30, 0.75
@@ -32,8 +32,8 @@ DEFAULT_EVAL_NOW = datetime(2026, 7, 11, 14, 0)  # 14:00, Asia/Ho_Chi_Minh assum
 
 # Default weights (pre-tuning). tune.py overwrites data/weights.json.
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "semantic": 0.30, "attributes": 0.25, "distance": 0.10, "rating": 0.10,
-    "popularity": 0.05, "open_now": 0.10, "review": 0.10,
+    "semantic": 0.30, "attributes": 0.25, "category": 0.20, "distance": 0.10,
+    "rating": 0.10, "popularity": 0.05, "open_now": 0.10, "review": 0.10,
 }
 WEIGHTS_PATH = Path("data/weights.json")  # committed, tuned on tune split only (NFR-6)
 
@@ -65,6 +65,17 @@ def attributes_signal(intent: QueryIntent, poi_attrs_folded: set[str]) -> float:
         return NEUTRAL
     matched = len(req & poi_attrs_folded) + 0.5 * len(soft & poi_attrs_folded)
     return _clamp01(matched / denom)
+
+
+def category_signal(intent: QueryIntent, poi: POI) -> float:
+    """1.0 when the POI matches the query's parsed category, 0.0 otherwise;
+    neutral (0.5) when no category was parsed so category-less queries
+    (Discovery/Intent) are unaffected. A soft signal, not a hard filter — a
+    parser mis-category only mildly penalizes the true answer instead of
+    banishing it (SPEC §6; PRD FR-7)."""
+    if intent.category is None:
+        return NEUTRAL
+    return 1.0 if poi.category == intent.category else 0.0
 
 
 def distance_signal(intent: QueryIntent, poi: POI) -> float:
@@ -140,6 +151,7 @@ class LinearRanker:
         return {
             "semantic": _clamp01(relevance),
             "attributes": attributes_signal(intent, attrs_folded),
+            "category": category_signal(intent, poi),
             "distance": distance_signal(intent, poi),
             "rating": rating_signal(poi, self.global_rating_mean),
             "popularity": popularity_signal(poi),

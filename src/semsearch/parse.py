@@ -75,7 +75,15 @@ class Parser:
 
         city = next((canon for key, canon in self.city_vocab.items() if key in hay), None)
         open_after = "22:00" if "mo khuya" in hay or "khuya" in hay else None
-        anchor = self.gazetteer.resolve(folded)
+        # Resolve against the expanded haystack so abbreviations resolve too:
+        # "q1" -> "quan 1" now matches the gazetteer's district centroid (FR-2).
+        anchor = self.gazetteer.resolve(hay)
+        # Lift any district reference into the structured field (shortest key
+        # first -> "Quận 1", not "Quận 1, TP.HCM"); used by the BM25 de-pollution.
+        district = next(
+            (disp for key, (_, _, disp) in self.gazetteer.districts.items() if key in hay),
+            None,
+        )
 
         return QueryIntent(
             raw=text,
@@ -86,4 +94,5 @@ class Parser:
             soft_prefs=[],
             open_after=open_after,
             city=city,
+            district=district,
         )

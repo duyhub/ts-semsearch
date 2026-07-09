@@ -8,6 +8,7 @@ import pytest
 from semsearch.data import POI, Anchor, QueryIntent
 from semsearch.rank import (
     attributes_signal,
+    category_signal,
     distance_signal,
     open_now_signal,
     popularity_signal,
@@ -47,6 +48,14 @@ def test_attributes_signal():
     assert attributes_signal(intent, {"wifi", "yen tinh"}) == pytest.approx(1.0)
     assert attributes_signal(intent, {"wifi"}) == pytest.approx(0.5)
     assert attributes_signal(_intent(), {"wifi"}) == 0.5  # no required -> neutral
+
+
+def test_category_signal():
+    # neutral (inert) when the query has no parsed category
+    assert category_signal(_intent(), _poi(category="Quán cà phê")) == 0.5
+    # 1.0 on exact category match, 0.0 on mismatch
+    assert category_signal(_intent(category="Quán cà phê"), _poi(category="Quán cà phê")) == 1.0
+    assert category_signal(_intent(category="Quán cà phê"), _poi(category="Trạm xăng")) == 0.0
 
 
 def test_distance_signal_neutral_without_anchor_and_one_at_zero():

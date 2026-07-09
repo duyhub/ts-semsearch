@@ -40,9 +40,21 @@ class BM25Index:
         corpus = [doc_tokens(lexical_doc(p)) for p in pois]
         self.bm25 = BM25Okapi(corpus)
 
-    def search(self, query_text: str, k: int | None = None) -> list[tuple[str, float]]:
-        """Score the FULL corpus (no top-k cut, OV1); return ranked (poi_id, score)."""
+    def search(self, query_text: str, k: int | None = None, *,
+               drop: set[str] | None = None) -> list[tuple[str, float]]:
+        """Score the FULL corpus (no top-k cut, OV1); return ranked (poi_id, score).
+
+        `drop` removes tokens (a lifted district reference, e.g. {"quan", "1"})
+        from the query before scoring, so they stop inflating every POI that
+        carries them in a field — the quán/quận fold-collision where a District-N
+        query token matches every District-N POI's district. Never emptied: if
+        dropping would remove all tokens, the full query is kept.
+        """
         q_tokens = expand_query(query_text)
+        if drop:
+            filtered = [t for t in q_tokens if t not in drop]
+            if filtered:
+                q_tokens = filtered
         scores = self.bm25.get_scores(q_tokens)
         order = sorted(range(len(self.poi_ids)), key=lambda i: scores[i], reverse=True)
         if k is not None:

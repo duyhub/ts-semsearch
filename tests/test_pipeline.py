@@ -26,5 +26,16 @@ def test_no_anchor_query_unaffected(pipe):
     assert all(r.poi.category == "Quán cà phê" for r in results)
 
 
+def test_category_word_dominates_lineup(pipe):
+    # "quán cà phê" + a District-1 location must return coffee shops, not the
+    # malls / gas stations / restaurants that share the location tokens
+    # ("quan 1 tp hcm"). Before the category signal, non-cafés interleaved the
+    # top-3 (mall #2, gas station #5). Runs under DEFAULT_WEIGHTS (the API path).
+    _, results = pipe.search("quan ca phe o q1 tphcm", k=5)
+    assert results
+    assert results[0].poi.category == "Quán cà phê"
+    assert all(r.poi.category == "Quán cà phê" for r in results[:3])
+
+
 def test_gibberish_still_nonempty(pipe):
     assert pipe.rank_ids("zzzz qwerty asdf")  # full-corpus ranking never empty

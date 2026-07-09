@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from semsearch.api import create_app
+from semsearch.rank import SIGNALS
 
 app = create_app(prewarm=False)
 client = TestClient(app)
@@ -106,5 +107,5 @@ def test_semantic_search_has_breakdown_reasons_intent():
     body = r.json()
     assert "intent" in body and "requiredAttrs" in body["intent"]
     res = body["results"][0]
-    assert len(res["breakdown"]) == 7           # all 7 signals exposed
+    assert len(res["breakdown"]) == len(SIGNALS)   # every signal exposed
     assert isinstance(res["reasons"], list) and res["reasons"]

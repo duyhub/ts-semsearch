@@ -55,10 +55,14 @@ class FullPipeline:
         self._attrs = {p.poi_id: _attrs_folded(p) for p in self.pois}
         self._review = {p.poi_id: _review_tokens(p) for p in self.pois}
 
-    def _relevance(self, query_text: str) -> dict[str, float]:
+    def _relevance(self, query_text: str, intent: QueryIntent) -> dict[str, float]:
         """Hybrid RRF relevance per POI, calibrated to [0,1] by a FIXED max (OV6:
-        not per-query min-max)."""
-        bm25_ids = self.bm25.rank_ids(query_text)
+        not per-query min-max). A lifted district reference is stripped from the
+        BM25 query (quán/quận de-pollution) — location is carried by the distance
+        signal, not lexical token overlap. The dense side keeps the full query
+        (embeddings don't token-double-count)."""
+        drop = set(fold(intent.district).split()) if intent.district else None
+        bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
         dense_ids = [pid for pid, _ in self.dense.search(query_text)]
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
@@ -66,7 +70,7 @@ class FullPipeline:
     def rank_scored(self, query_text: str) -> list[tuple[str, float, dict[str, float]]]:
         """Full-corpus ranking with per-signal breakdowns (used by the API/explanations)."""
         intent = self.parser.parse(query_text)
-        rel = self._relevance(query_text)
+        rel = self._relevance(query_text, intent)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
             s, b = self.ranker.score(
