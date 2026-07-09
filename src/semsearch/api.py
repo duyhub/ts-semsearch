@@ -70,9 +70,25 @@ class SearchResponse(BaseModel):
     meta: Meta
 
 
+class PlaceDetail(BaseModel):
+    """Extra POI fields for the UI's "Chi tiết" (details) panel — not part of the
+    contract-exact /v1/search response, only the enriched /v1/semantic-search."""
+    description: str = ""
+    attributes: list[str] = []
+    rating: float
+    reviewCount: int
+    priceLevel: Optional[int] = None
+    openingHours: Optional[str] = None
+    brand: Optional[str] = None
+    subCategory: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+
+
 class SemanticPlaceResult(PlaceResult):
     breakdown: dict[str, float]
     reasons: list[str]
+    detail: PlaceDetail
 
 
 class IntentEcho(BaseModel):
@@ -88,6 +104,7 @@ class SemanticSearchResponse(BaseModel):
     intent: IntentEcho
     results: list[SemanticPlaceResult]
     meta: Meta
+    weights: dict[str, float] = {}  # the ranker's tuned per-signal weights (for the "Vì sao?" panel)
 
 
 class ErrorDetail(BaseModel):
@@ -240,7 +257,13 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         results = [
             SemanticPlaceResult(**_place(p, s, ref, source).model_dump(),
                                 breakdown={k: round(v, 4) for k, v in b.items()},
-                                reasons=generate_reasons(intent, p))
+                                reasons=generate_reasons(intent, p),
+                                detail=PlaceDetail(
+                                    description=p.description, attributes=p.attributes,
+                                    rating=p.rating, reviewCount=p.review_count,
+                                    priceLevel=p.price_level, openingHours=p.opening_hours,
+                                    brand=p.brand, subCategory=p.sub_category,
+                                    district=p.district, city=p.city))
             for p, s, b in picked
         ]
         anchor = ({"name": intent.anchor.name, "lat": intent.anchor.lat, "lon": intent.anchor.lon}
@@ -248,7 +271,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         echo = IntentEcho(category=intent.category, requiredAttrs=intent.required_attrs,
                           anchor=anchor, city=intent.city, openAfter=intent.open_after)
         resp = SemanticSearchResponse(query=q, intent=echo, results=results,
-                                      meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)))
+                                      meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)),
+                                      weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()})
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
     return app

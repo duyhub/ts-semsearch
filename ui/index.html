@@ -143,6 +143,36 @@
   .sigtrack{height:7px; background:#edefe9; border-radius:var(--radius-pill); overflow:hidden}
   .sigfill{display:block; height:100%; border-radius:var(--radius-pill); transition:width .25s ease}
   .sigval{font-size:11.5px; color:var(--ink-mute); text-align:right; font-variant-numeric:tabular-nums}
+  /* address on card */
+  .addr{margin-top:4px; font-size:12.5px; color:var(--ink-mute); display:flex; gap:5px; align-items:baseline}
+  .addr .pn{color:var(--primary); flex:none}
+  .addr .tx{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  /* details toggle + panel */
+  .detail-btn{border:1px solid var(--line-2); background:var(--surface); color:var(--ink-dim); font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:var(--radius-pill); transition:.15s}
+  .detail-btn:hover{background:var(--surface-2); border-color:var(--ink-mute); color:var(--ink)}
+  .detailbox{display:none; margin-top:12px; padding-top:11px; border-top:1px solid var(--line); flex-direction:column; gap:9px}
+  .detailbox.open{display:flex}
+  .drow{display:grid; grid-template-columns:66px 1fr; gap:10px; font-size:13px; align-items:start}
+  .drow .dk{color:var(--ink-mute); font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em; padding-top:2px}
+  .drow .dv{color:var(--ink); line-height:1.55}
+  .chips-mini{display:flex; flex-wrap:wrap; gap:6px}
+  .chip-mini{background:var(--surface-2); border:1px solid var(--line); color:var(--ink-dim); font-size:12px; padding:3px 9px; border-radius:var(--radius-pill)}
+  .chip-mini.attr{background:var(--primary-tint); border-color:transparent; color:var(--primary-deep); font-weight:500}
+  /* "Vì sao?" ranking panel (judge-facing: value x weight = contribution) */
+  .whybox{margin-top:12px}
+  .whyhead{font-size:12.5px; color:var(--ink-dim); margin-bottom:11px; line-height:1.5}
+  .whyhead b{color:var(--ink); font-variant-numeric:tabular-nums}
+  .sigtable{display:grid; grid-template-columns:minmax(0,1.35fr) minmax(76px,1.5fr) 42px 50px; gap:10px 8px; align-items:center}
+  .sigth{font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-mute)}
+  .sigth.right{text-align:right}
+  .sigc.nm{display:flex; flex-direction:column; min-width:0; gap:1px}
+  .sigc.nm b{font-size:12.5px; font-weight:600; color:var(--ink)}
+  .sigc.nm .gloss{font-size:10.5px; color:var(--ink-mute); line-height:1.3}
+  .sigc.barc{display:flex; align-items:center; gap:8px}
+  .sigc.barc .sigtrack{flex:1}
+  .sigc.barc .v{font-size:11.5px; color:var(--ink-dim); font-variant-numeric:tabular-nums; width:24px; text-align:right}
+  .sigc.wt{font-size:12px; color:var(--ink-dim); text-align:right; font-variant-numeric:tabular-nums}
+  .sigc.ct{font-size:12.5px; font-weight:700; color:var(--primary-deep); text-align:right; font-variant-numeric:tabular-nums}
 
   /* keyword (compare) card — deliberately plainer, to contrast with the AI column */
   .kwcard{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-sm); padding:12px 14px; box-shadow:var(--shadow-sm)}
@@ -274,8 +304,12 @@ const CHIPS = [
 ];
 const SIG_LABEL = {semantic:"Ngữ nghĩa", attributes:"Thuộc tính", category:"Danh mục", distance:"Khoảng cách",
   rating:"Đánh giá", popularity:"Phổ biến", open_now:"Đang mở", review:"Tags/mô tả"};
+const SIG_GLOSS = {semantic:"khớp ngữ nghĩa (BM25 + vector, RRF)", attributes:"tiện ích khớp nhu cầu",
+  category:"đúng loại địa điểm", distance:"gần điểm neo", rating:"đánh giá (Bayesian)",
+  popularity:"độ phổ biến", open_now:"đang mở cửa", review:"nhu cầu khớp tags/mô tả"};
+const fmtInt = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, took:0, selected:null, loading:false};
+let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, took:0, selected:null, weights:{}, loading:false};
 
 /* ---------- parse the fact-based reasons into card elements ---------- */
 function parseReasons(reasons){
@@ -290,14 +324,45 @@ function parseReasons(reasons){
 }
 function districtOf(r){ const m=/,\s*(.+)$/.exec(r.label||''); return m?m[1]:''; }
 
-function bars(breakdown){
-  return Object.entries(breakdown||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
+function detailBox(r){
+  const d = r.detail || {};
+  const price = d.priceLevel ? '₫'.repeat(Math.max(1, Math.min(4, d.priceLevel))) : '';
+  const meta = [
+    d.rating!=null ? `★ ${d.rating.toFixed(1)} · ${fmtInt(d.reviewCount)} đánh giá` : '',
+    price ? `giá ${price}` : '',
+    d.openingHours ? `giờ mở ${d.openingHours}` : '',
+    d.brand ? `thương hiệu ${d.brand}` : '',
+  ].filter(Boolean);
+  const attrs = (d.attributes||[]).map(a=>`<span class="chip-mini attr">${esc(a)}</span>`).join('');
+  const tags = (r.tags||[]).map(t=>`<span class="chip-mini">${esc(t)}</span>`).join('');
+  return `<div class="detailbox">
+    <div class="drow"><span class="dk">Địa chỉ</span><span class="dv">${esc(r.address||'—')}</span></div>
+    ${d.description?`<div class="drow"><span class="dk">Mô tả</span><span class="dv">${esc(d.description)}</span></div>`:''}
+    ${meta.length?`<div class="drow"><span class="dk">Thông tin</span><span class="dv">${meta.map(esc).join(' · ')}</span></div>`:''}
+    ${attrs?`<div class="drow"><span class="dk">Tiện ích</span><span class="dv chips-mini">${attrs}</span></div>`:''}
+    ${tags?`<div class="drow"><span class="dk">Tags</span><span class="dv chips-mini">${tags}</span></div>`:''}
+  </div>`;
+}
+// judge-facing ranking breakdown: each signal's value x weight = contribution to the composite score
+function whyPanel(r){
+  const w = state.weights || {}, bd = r.breakdown || {};
+  const totalW = Object.values(w).reduce((a,b)=>a+b, 0) || 1;
+  const f2 = x => x>=1 ? '1.0' : x.toFixed(2).replace(/^0/,'');
+  const rows = Object.keys(bd).map(k=>({k, v:bd[k], wt:(w[k]??0), c:(w[k]??0)*bd[k]/totalW}))
+                              .sort((a,b)=>b.c-a.c);
+  const body = rows.map(({k,v,wt,c})=>{
     const pct = Math.round(Math.max(0,Math.min(1,v))*100);
-    const val = v>=1 ? '1.0' : v.toFixed(2).replace(/^0/,'');
-    return `<div class="sigrow"><span class="siglab">${SIG_LABEL[k]||k}</span>`+
-      `<span class="sigtrack"><span class="sigfill" style="width:${pct}%;background:var(--sig-${k})"></span></span>`+
-      `<span class="sigval">${val}</span></div>`;
+    return `<div class="sigc nm"><b>${SIG_LABEL[k]||k}</b><span class="gloss">${esc(SIG_GLOSS[k]||'')}</span></div>`+
+      `<div class="sigc barc"><span class="sigtrack"><span class="sigfill" style="width:${pct}%;background:var(--sig-${k})"></span></span><span class="v">${f2(v)}</span></div>`+
+      `<div class="sigc wt">${f2(wt)}</div><div class="sigc ct">${f2(c)}</div>`;
   }).join('');
+  return `<div class="whybox">
+    <div class="whyhead">Điểm tổng <b>${r.score.toFixed(3)}</b> = Σ (trọng số × tín hiệu) — xếp theo mức đóng góp:</div>
+    <div class="sigtable">
+      <div class="sigth">Tín hiệu</div><div class="sigth">Giá trị</div><div class="sigth right">Trọng số</div><div class="sigth right">Đóng góp</div>
+      ${body}
+    </div>
+  </div>`;
 }
 
 function semCard(r,i){
@@ -312,14 +377,17 @@ function semCard(r,i){
     <div class="top"><div class="rank">${i+1}</div><div class="nm">
       <div class="name">${esc(r.name)}</div>
       <div class="sub">${esc(r.category)}${districtOf(r)?' · '+esc(districtOf(r)):''}</div>
+      ${r.address?`<div class="addr"><span class="pn">📍</span><span class="tx">${esc(r.address)}</span></div>`:''}
     </div></div>
     ${badges?`<div class="badges">${badges}</div>`:''}
     ${facts?`<div class="facts">${facts}</div>`:''}
     <div class="cardfoot">
       <span class="score"><span>Điểm</span> ${r.score.toFixed(3)}</span>
+      <button class="detail-btn" aria-expanded="false">Chi tiết</button>
       <button class="why" aria-expanded="false">Vì sao?</button>
     </div>
-    <div class="signals">${bars(r.breakdown)}</div>
+    ${detailBox(r)}
+    <div class="signals">${whyPanel(r)}</div>
   </article>`;
 }
 function kwCard(r,i){
@@ -327,6 +395,7 @@ function kwCard(r,i){
     <div class="top"><div class="rank">${i+1}</div><div class="nm">
       <div class="name">${esc(r.name)}</div>
       <div class="sub">${esc(r.category)}${districtOf(r)?' · '+esc(districtOf(r)):''}</div>
+      ${r.address?`<div class="addr"><span class="pn">📍</span><span class="tx">${esc(r.address)}</span></div>`:''}
       <div class="kwnote">khớp mặt chữ với truy vấn</div>
     </div></div>
   </article>`;
@@ -426,11 +495,15 @@ function renderResults(){
     const id=card.dataset.id;
     card.addEventListener('mouseenter',()=>liftPin(id,true));
     card.addEventListener('mouseleave',()=>{ if(state.selected!==id) liftPin(id,false); });
-    card.addEventListener('click',e=>{ if(e.target.closest('.why')) return; selectResult(id); });
-    card.addEventListener('keydown',e=>{ if(e.key==='Enter'){ selectResult(id); } });
+    card.addEventListener('click',e=>{ if(e.target.closest('.why,.detail-btn,.signals,.detailbox')) return; selectResult(id); });
+    card.addEventListener('keydown',e=>{ if(e.key==='Enter' && e.target===card){ selectResult(id); } });
     card.querySelector('.why')?.addEventListener('click',e=>{
-      e.stopPropagation(); const sig=card.querySelector('.signals'); const on=sig.classList.toggle('open');
-      e.target.setAttribute('aria-expanded', on?'true':'false'); e.target.textContent = on?'Ẩn tín hiệu':'Vì sao?';
+      e.stopPropagation(); const on=card.querySelector('.signals').classList.toggle('open');
+      e.currentTarget.setAttribute('aria-expanded', on?'true':'false'); e.currentTarget.textContent = on?'Ẩn tín hiệu':'Vì sao?';
+    });
+    card.querySelector('.detail-btn')?.addEventListener('click',e=>{
+      e.stopPropagation(); const on=card.querySelector('.detailbox').classList.toggle('open');
+      e.currentTarget.setAttribute('aria-expanded', on?'true':'false'); e.currentTarget.textContent = on?'Ẩn chi tiết':'Chi tiết';
     });
   });
   $$('.kwcard').forEach(card=>{ card.addEventListener('mouseenter',()=>liftPin(card.dataset.id,true));
@@ -452,7 +525,7 @@ async function run(query){
       fetch(`/v1/search?q=${encodeURIComponent(q)}&engine=keyword&limit=8`).then(r=>r.ok?r.json():{results:[]}),
     ]);
     state.sem=sem.results||[]; state.intent=sem.intent||{}; state.took=sem.meta?.tookMs ?? 0;
-    state.semSource = state.sem[0]?.source; state.kw=kw.results||[];
+    state.weights=sem.weights||{}; state.semSource = state.sem[0]?.source; state.kw=kw.results||[];
     $('#latVal').textContent=`${Math.round(state.took)} ms`;
     renderResults();
   }catch(err){
