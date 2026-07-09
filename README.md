@@ -10,7 +10,30 @@ and returns ranked results **with explanations**. Integration-ready with the Tas
 > Demo UI reference: [`docs/mockup/money-shot.html`](docs/mockup/money-shot.html)
 > (static) and [`docs/mockup/money-shot-interactive.html`](docs/mockup/money-shot-interactive.html) (interactive).
 
-_(Full overview, methodology, and API docs land at build Phase 9 — see RUNBOOK.)_
+## How it works
+
+```
+query ─▶ normalize (fold diacritics, expand abbreviations) ─▶ parse intent (rules)
+      ─▶ BM25 + dense (bge-m3) ──RRF──▶ hybrid relevance
+      ─▶ re-rank all POIs by 7 interpretable signals ─▶ faithful explanations
+      ─▶ /v1/search (Tasco contract) + /v1/semantic-search ─▶ demo UI
+```
+
+Full write-up + the 1:1 mapping of our signals to the sponsor's: [`docs/methodology.md`](docs/methodology.md).
+Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart). OpenAPI: `openapi.json`.
+
+## Results — all five gates green
+
+| Gate | Metric | Result | Threshold |
+|---|---|---|---|
+| G1 | BM25 Recall@5 (tune) | 0.917 | ≥ 0.55 |
+| G2 | hybrid NDCG@5 > max(bm25, dense) (tune) | 0.922 > 0.881 | > |
+| G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.884 / 0.933** | ≥ 0.80 / ≥ 0.75 |
+| G4 | warm p95 latency | 2 ms | < 200 ms |
+| G5 | robustness (60 eval + adversarial) | 138/138 | 0 failures |
+
+Reproduce: `uv run python scripts/report_metrics.py` → [`reports/metrics.md`](reports/metrics.md).
+Ablation, embedding choice, latency, sample queries: see [`reports/`](reports/).
 
 ## Requirements
 
@@ -23,7 +46,7 @@ parser, and the API are all lightweight.
 
 | Resource | Minimum | Recommended | Notes |
 |---|---|---|---|
-| RAM | 8 GB | **16 GB** | `bge-m3` loads to ~2–2.5 GB; 16 GB is comfortable when running the API + Next.js UI + a browser together for the demo |
+| RAM | 8 GB | **16 GB** | `bge-m3` loads to ~2–2.5 GB; 16 GB is comfortable running the API + a browser together for the demo |
 | CPU | any modern x86/ARM laptop | Apple Silicon (M1+) | **No GPU required** |
 | GPU | none | optional | Only speeds up cold-query embedding; not needed at this scale |
 | Disk | ~5 GB free | — | PyTorch + sentence-transformers install (~2–3 GB) + `bge-m3` weights (~2.3 GB) |
@@ -49,8 +72,8 @@ cold and warm p95 separately.
 
 ### Software
 
-- Python 3.11, managed with [uv](https://github.com/astral-sh/uv)
-- Node (for the Next.js demo UI)
+- Python 3.11, managed with [uv](https://github.com/astral-sh/uv). No Node required —
+  the demo UI is a lean single-page app served by the API itself.
 - Optional: AWS Bedrock credentials — Bedrock is a *selectable, measured* embedding/LLM
   provider (Built-with-AWS eligibility), **not** required to run. Local `bge-m3` + the
   rule parser are the default and the path the demo runs on.
@@ -64,9 +87,29 @@ uv sync
 # 2. pre-download the local embedding model (one-time, ~2.3 GB)
 uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
 
-# 3. build derived data + embeddings, then run the eval
+# 3. build derived data + embeddings + the committed eval split
 uv run python scripts/ingest.py
-uv run python scripts/run_eval.py --split tune
+
+# 4. tune weights (tune split only) and reproduce the metrics
+uv run python scripts/tune.py
+uv run python scripts/report_metrics.py     # -> reports/metrics.md (all gates)
 ```
 
-_(Setup commands finalize as the build lands — this reflects the RUNBOOK plan.)_
+## Run the demo (API + UI)
+
+```bash
+uv run uvicorn semsearch.api:create_app --factory --port 8000
+# then open http://127.0.0.1:8000/   (keyword-vs-semantic money shot)
+#   API:  GET /v1/search?q=...            (Tasco contract)
+#         GET /v1/semantic-search?q=...   (+ breakdown, reasons, intent)
+#         GET /health   ·   GET /docs (OpenAPI)
+```
+
+## Verify
+
+```bash
+uv run pytest -q                         # 78 tests
+uv run python scripts/robustness.py      # G5 sweep (60 eval + adversarial)
+uv run python scripts/bench_latency.py   # G4 cold vs warm p95
+uv run python scripts/sample_queries.py  # -> reports/sample-queries.md
+```
