@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tasco Semantic Search — interactive demo prototype</title>
+<!-- Interactive, fake-data prototype of SPEC §10. No backend.
+     - Query chips switch the canned query (animated).
+     - "Sắp theo: Từ khóa | AI" toggle plays the FLIP re-rank (Delight-2).
+     - Per-card "Xem đủ 7 tín hiệu" expands the full breakdown (DD2).
+     - Map panel auto-opens for location queries (DD1).
+     Production uses "Be Vietnam Pro"; this uses a system stack. -->
+<style>
+  :root{
+    --signal-semantic:#3b9ae1; --signal-attributes:#e69f00; --signal-distance:#22b07d;
+    --signal-rating:#cc79a7; --signal-popularity:#56b4e9; --signal-open:#f0d43a; --signal-review:#e0663a;
+    --bg:#0e1116; --panel:#171b22; --panel-2:#1e232c; --line:#2a313c;
+    --ink:#f2f5f8; --ink-dim:#9aa6b2; --accent:#3b9ae1; --good:#22b07d;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Be Vietnam Pro","Segoe UI",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:26px 32px 44px}
+
+  header.topbar{display:flex;align-items:center;gap:18px;margin-bottom:20px}
+  .brand{font-weight:800;font-size:26px;letter-spacing:-.2px;white-space:nowrap}
+  .brand .dot{color:var(--accent)}
+  .brand small{display:block;font-weight:500;font-size:14px;color:var(--ink-dim)}
+  .searchwrap{flex:1}
+  .searchbar{display:flex;align-items:center;gap:12px;background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:13px 20px}
+  .searchbar input{flex:1;background:none;border:none;outline:none;color:var(--ink);
+    font-family:inherit;font-size:20px;font-weight:500}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .chip{background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);
+    padding:8px 14px;border-radius:999px;font-size:15px;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink);border-color:var(--accent)}
+  .chip.active{background:rgba(59,154,225,.14);border-color:var(--accent);color:#cfe8fb}
+
+  .resulthdr{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 14px;gap:16px}
+  .resulthdr .q{font-size:17px;color:var(--ink-dim)}
+  .resulthdr .q b{color:var(--ink);font-weight:700}
+  .right-tools{display:flex;align-items:center;gap:14px}
+  .sortctl{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-dim)}
+  .seg{display:inline-flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{border:none;background:none;color:var(--ink-dim);font-family:inherit;font-size:14px;font-weight:600;
+    padding:6px 14px;border-radius:999px;cursor:pointer;transition:.15s}
+  .seg button.on{background:var(--accent);color:#04121f}
+  .latency{display:inline-flex;align-items:center;gap:7px;background:rgba(34,176,125,.13);
+    color:var(--good);border:1px solid rgba(34,176,125,.35);padding:6px 12px;border-radius:999px;
+    font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .latency .pulse{width:7px;height:7px;border-radius:50%;background:var(--good)}
+
+  .columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .col.semantic{border-color:rgba(59,154,225,.5);box-shadow:0 0 0 1px rgba(59,154,225,.22),0 14px 40px -24px rgba(59,154,225,.55)}
+  .col-head{display:flex;align-items:center;gap:10px;margin:2px 4px 14px}
+  .col-head .tag{font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:5px 10px;border-radius:8px}
+  .col.keyword .tag{background:#2a313c;color:var(--ink-dim)}
+  .col.semantic .tag{background:var(--accent);color:#04121f}
+  .col-head .sub{font-size:14px;color:var(--ink-dim)}
+
+  .list{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 15px;will-change:transform}
+  .card.dim{opacity:.6}
+  .card-top{display:flex;gap:12px;align-items:flex-start}
+  .rank{flex:none;width:30px;height:30px;border-radius:8px;background:#2a313c;color:var(--ink-dim);
+    font-weight:800;font-size:16px;display:grid;place-items:center}
+  .col.semantic .rank{background:var(--accent);color:#04121f}
+  .name{font-size:21px;font-weight:700;line-height:1.15}
+  .meta{margin-top:3px;font-size:14px;color:var(--ink-dim)}
+  .stars{color:#ffcf4d;font-weight:600}
+  .badges{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 3px}
+  .badge{font-size:14px;font-weight:600;padding:5px 10px;border-radius:8px;
+    background:rgba(34,176,125,.14);color:#7ee0b6;border:1px solid rgba(34,176,125,.3)}
+  .badge.match{background:rgba(230,159,0,.18);color:#ffd479;border-color:rgba(230,159,0,.45)}
+  .reason{font-size:16px;color:#d7dee6;margin:8px 0 11px;line-height:1.4}
+  .composite{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+  .bars{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+  .bar-row{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px}
+  .bar-label{font-size:13px;color:var(--ink-dim)}
+  .bar-track{height:9px;background:#2a313c;border-radius:999px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:999px}
+  .bar-val{font-size:12px;color:var(--ink-dim);text-align:right;font-variant-numeric:tabular-nums}
+  details.full{margin-top:10px;border-top:1px dashed var(--line);padding-top:9px}
+  details.full summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;list-style:none}
+  details.full summary::-webkit-details-marker{display:none}
+
+  .mappanel{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;transition:.25s ease}
+  .mappanel .mp-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer}
+  .mappanel .mp-head .t{font-weight:700;font-size:16px}
+  .mappanel .mp-head .hint{font-size:13px;color:var(--ink-dim)}
+  .maparea{height:0;transition:height .25s ease;background:linear-gradient(135deg,#1b2b24,#16202b);position:relative}
+  .mappanel.open .maparea{height:170px;border-top:1px solid var(--line)}
+  .pin{position:absolute;width:26px;height:26px;border-radius:50% 50% 50% 2px;transform:rotate(45deg);
+    display:grid;place-items:center;font-weight:800;font-size:12px;color:#04121f;background:var(--accent)}
+  .pin span{transform:rotate(-45deg)}
+  .pin.anchor{background:var(--signal-attributes);border-radius:50%}
+
+  .hintbar{margin-top:20px;text-align:center;color:var(--ink-dim);font-size:13px}
+  .hintbar code{background:var(--panel-2);padding:2px 7px;border-radius:6px;color:#cfe8fb}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">Tasco<span class="dot">.</span>tìm<small>Semantic search &amp; ranking</small></div>
+  <div class="searchwrap">
+    <div class="searchbar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9aa6b2" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input id="q" value="" aria-label="Tìm kiếm" />
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<div class="resulthdr">
+  <div class="q">Kết quả cho <b id="qecho"></b></div>
+  <div class="right-tools">
+    <div class="sortctl">Cột AI sắp theo:
+      <span class="seg"><button id="sortKw">Từ khóa</button><button id="sortAi" class="on">Ngữ nghĩa</button></span>
+    </div>
+    <div class="latency"><span class="pulse"></span><span id="lat">41 ms</span></div>
+  </div>
+</div>
+
+<div class="columns">
+  <section class="col keyword"><div class="col-head"><span class="tag">Keyword · BM25</span><span class="sub">khớp từ khóa</span></div><div class="list" id="kwList"></div></section>
+  <section class="col semantic"><div class="col-head"><span class="tag">Semantic · AI</span><span class="sub" id="semsub">hiểu ý định</span></div><div class="list" id="semList"></div></section>
+</div>
+
+<div class="mappanel" id="map">
+  <div class="mp-head" id="mapHead"><span class="t">Bản đồ</span><span class="hint" id="mapHint">Tự mở khi truy vấn có vị trí</span></div>
+  <div class="maparea"><div class="pin anchor" style="left:47%;top:38%"><span>⚑</span></div><div class="pin" style="left:34%;top:52%"><span>1</span></div><div class="pin" style="left:58%;top:44%"><span>2</span></div><div class="pin" style="left:66%;top:64%"><span>3</span></div></div>
+</div>
+
+<div class="hintbar">Prototype tương tác của <code>SPEC §10</code> · bấm chip đổi truy vấn · gạt <b>Từ khóa ↔ Ngữ nghĩa</b> để xem hoạt ảnh xếp hạng lại</div>
+
+<script>
+/* ---------- fake data ---------- */
+const SIG = {semantic:"Ngữ nghĩa",attributes:"Thuộc tính",distance:"Khoảng cách",rating:"Đánh giá",popularity:"Phổ biến",open:"Đang mở",review:"Tags/mô tả"};
+function bars(o){return Object.keys(o).map(k=>({key:k,label:SIG[k],val:o[k]}));}
+
+const QUERIES = {
+  work: {
+    label:"quán cà phê yên tĩnh để làm việc", latency:41, anchor:false, semsub:"hiểu ý định: yên tĩnh, làm việc",
+    keyword:[
+      {name:"Cà Phê Sân Thượng Ồn Ào",rating:3.9,reviews:"210",area:"Quận 3",reason:'Khớp từ “cà phê”. Rooftop, nhạc lớn, không ổ cắm.'},
+      {name:"Highlands Coffee — Vincom",rating:4.1,reviews:"5.400",area:"Quận 1",reason:'Khớp từ “cà phê”. Trung tâm thương mại, đông và ồn.'},
+      {name:"Cà Phê Bệt Công Viên",rating:4.0,reviews:"320",area:"Quận 1",reason:'Khớp từ “cà phê”. Ngoài trời, không wifi.'},
+      {name:"The Coffee House — Nguyễn Huệ",rating:4.2,reviews:"3.100",area:"Quận 1",reason:'Khớp từ “cà phê”. Phố đi bộ, rất đông.'},
+    ],
+    semantic:[
+      {name:"The Workshop Coffee",rating:4.6,reviews:"1.560",area:"Quận 1",hours:"22:30",comp:"0.94",
+       badges:[["yên tĩnh",1],["phù hợp làm việc",1],["wifi",0],["ổ cắm",0]],
+       reason:"Không gian yên tĩnh, wifi mạnh, nhiều ổ cắm — làm việc cả buổi.",
+       top:bars({semantic:.92,attributes:1.0,rating:.88}), rest:bars({distance:.50,popularity:.74,open:1.0,review:.80})},
+      {name:"Nhã Coffee & Working Space",rating:4.7,reviews:"890",area:"Quận 3",hours:"23:00",comp:"0.91",
+       badges:[["yên tĩnh",1],["phù hợp làm việc",1],["wifi",0],["ổ cắm",0]],
+       reason:"Coworking café, bàn rộng, ổ cắm mọi chỗ ngồi, rất yên.",
+       top:bars({semantic:.89,attributes:1.0,rating:.91}), rest:bars({distance:.50,popularity:.61,open:1.0,review:.85})},
+      {name:"Tranquil Books & Coffee",rating:4.5,reviews:"1.120",area:"Quận 1",hours:"22:00",comp:"0.87",
+       badges:[["yên tĩnh",1],["wifi",0],["không gian đọc sách",0]],
+       reason:"Café kết hợp hiệu sách, quy định giữ yên lặng — hợp tập trung.",
+       top:bars({semantic:.86,attributes:.78,rating:.84}), rest:bars({distance:.50,popularity:.69,open:1.0,review:.77})},
+    ],
+    kwOrder:[2,0,1], /* how the semantic set would rank under keyword-only */
+  },
+  wifi: {
+    label:"cafe có wifi gần hồ gươm", latency:38, anchor:true, semsub:"neo: Hồ Gươm · wifi",
+    keyword:[
+      {name:"Gươm Coffee (tên trùng)",rating:3.8,reviews:"95",area:"Hoàn Kiếm",reason:'Khớp “gươm”. Không có wifi, xa hồ 1.2km.'},
+      {name:"Highlands — Nhà Thờ",rating:4.0,reviews:"2.900",area:"Hoàn Kiếm",reason:'Khớp “cafe”. Đông khách du lịch.'},
+      {name:"Cà Phê Giảng",rating:4.4,reviews:"4.100",area:"Hoàn Kiếm",reason:'Khớp “cafe”. Nổi tiếng nhưng chật, không wifi ổn định.'},
+    ],
+    semantic:[
+      {name:"Loading Coffee — Hàng Bài",rating:4.6,reviews:"1.230",area:"Hoàn Kiếm",hours:"23:00",comp:"0.93",
+       badges:[["wifi",1],["gần Hồ Gươm",1],["yên tĩnh",0]],
+       reason:"Wifi mạnh, cách Hồ Gươm 400m — yên và thoáng.",
+       top:bars({semantic:.88,distance:.95,attributes:.90}), rest:bars({rating:.82,popularity:.66,open:1.0,review:.80})},
+      {name:"Blackbird Coffee",rating:4.5,reviews:"760",area:"Hoàn Kiếm",hours:"22:30",comp:"0.89",
+       badges:[["wifi",1],["gần Hồ Gươm",1],["ổ cắm",0]],
+       reason:"Cách Hồ Gươm 600m, wifi tốt, có ổ cắm ở tầng 2.",
+       top:bars({semantic:.85,distance:.88,attributes:.86}), rest:bars({rating:.80,popularity:.58,open:1.0,review:.74})},
+      {name:"Tranquil Books & Coffee",rating:4.5,reviews:"1.120",area:"Hoàn Kiếm",hours:"22:00",comp:"0.84",
+       badges:[["wifi",1],["yên tĩnh",0],["gần Hồ Gươm",1]],
+       reason:"Cách Hồ Gươm 850m, wifi ổn, không gian đọc sách yên.",
+       top:bars({semantic:.83,distance:.76,attributes:.82}), rest:bars({rating:.80,popularity:.69,open:1.0,review:.77})},
+    ],
+    kwOrder:[1,0,2],
+  },
+  gas: {
+    label:"cây xăng 24/7 gần đây", latency:29, anchor:true, semsub:"neo: vị trí bạn · mở 24/7",
+    keyword:[
+      {name:"Cửa Hàng Xăng Dầu số 12",rating:3.9,reviews:"48",area:"Quận 5",reason:'Khớp “xăng”. Đóng cửa 22:00 — không 24/7.'},
+      {name:"Petrolimex Trần Hưng Đạo",rating:4.1,reviews:"120",area:"Quận 1",reason:'Khớp “xăng”. Giờ mở 05:00–23:00.'},
+    ],
+    semantic:[
+      {name:"Petrolimex Nguyễn Trãi (24/7)",rating:4.3,reviews:"210",area:"Quận 5",hours:"24/7",comp:"0.92",
+       badges:[["24/7",1],["gần đây",1]],
+       reason:"Mở 24/7, cách bạn 700m — trạm gần nhất còn mở.",
+       top:bars({attributes:1.0,distance:.90,open:1.0}), rest:bars({semantic:.70,rating:.72,popularity:.60,review:.55})},
+      {name:"COMECO Trạm 24h — Q1",rating:4.2,reviews:"180",area:"Quận 1",hours:"24/7",comp:"0.86",
+       badges:[["24/7",1],["gần đây",1]],
+       reason:"Mở 24/7, cách bạn 1.4km, có cửa hàng tiện lợi.",
+       top:bars({attributes:1.0,distance:.72,open:1.0}), rest:bars({semantic:.68,rating:.70,popularity:.58,review:.50})},
+    ],
+    kwOrder:[0,1],
+  },
+};
+const ORDER = ["work","wifi","gas"];
+
+/* ---------- render ---------- */
+const $=s=>document.querySelector(s);
+let cur="work", sort="ai";
+
+function barRows(list){return list.map(b=>
+  `<div class="bar-row"><span class="bar-label">${b.label}</span><span class="bar-track"><span class="bar-fill" style="width:${Math.round(b.val*100)}%;background:var(--signal-${b.key})"></span></span><span class="bar-val">${b.val>=1?"1.0":b.val.toFixed(2).slice(1)}</span></div>`).join("");}
+
+function kwCard(c,i){return `<div class="card dim"><div class="card-top"><div class="rank">${i+1}</div><div><div class="name">${c.name}</div><div class="meta"><span class="stars">${c.rating.toFixed(1)}★</span> · ${c.reviews} đánh giá · ${c.area}</div></div></div><div class="reason">${c.reason}</div></div>`;}
+
+function semCard(c,i){
+  const badges=c.badges.map(b=>`<span class="badge${b[1]?' match':''}"><span class="x">✓</span>${b[0]}</span>`).join("");
+  return `<div class="card" data-key="${c.name}"><div class="card-top"><div class="rank">${i+1}</div><div><div class="name">${c.name}</div><div class="meta"><span class="stars">${c.rating.toFixed(1)}★</span> · ${c.reviews} đánh giá · ${c.area} · mở đến ${c.hours}</div></div></div>`+
+  `<div class="badges">${badges}</div><div class="reason">${c.reason}</div>`+
+  `<div class="composite">Điểm ${c.comp}</div><div class="bars">${barRows(c.top)}</div>`+
+  `<details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary><div class="bars">${barRows(c.rest)}</div></details></div>`;}
+
+function currentSemOrder(){const q=QUERIES[cur];return sort==="ai"?q.semantic.map((_,i)=>i):q.kwOrder;}
+
+function renderKeyword(){$("#kwList").innerHTML=QUERIES[cur].keyword.map(kwCard).join("");}
+function renderSemantic(){const q=QUERIES[cur];$("#semList").innerHTML=currentSemOrder().map((idx,pos)=>semCard(q.semantic[idx],pos)).join("");}
+
+function reduceMotion(){return window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;}
+
+/* FLIP re-rank on the semantic column (Delight-2) */
+function flipReorder(){
+  const listEl=$("#semList");
+  const before=new Map();
+  [...listEl.children].forEach(el=>before.set(el.dataset.key,el.getBoundingClientRect().top));
+  renderSemantic();
+  if(reduceMotion())return;
+  const after=[...listEl.children];
+  after.forEach(el=>{
+    const prev=before.get(el.dataset.key); if(prev==null)return;
+    const dy=prev-el.getBoundingClientRect().top;
+    if(!dy)return;
+    el.style.transition="none"; el.style.transform=`translateY(${dy}px)`;
+    requestAnimationFrame(()=>{el.style.transition="transform .45s cubic-bezier(.2,.8,.2,1)";el.style.transform="";});
+  });
+}
+
+function setSort(s){sort=s;$("#sortAi").classList.toggle("on",s==="ai");$("#sortKw").classList.toggle("on",s==="kw");flipReorder();}
+
+function fadeInLists(){
+  if(reduceMotion())return;
+  [...$("#kwList").children,...$("#semList").children].forEach((el,i)=>{
+    el.style.opacity=0;el.style.transform="translateY(10px)";
+    setTimeout(()=>{el.style.transition="opacity .3s ease, transform .3s ease";el.style.opacity=1;el.style.transform="";},40*i);
+  });
+}
+
+function setQuery(id){
+  cur=id; sort="ai";
+  const q=QUERIES[id];
+  $("#q").value=q.label; $("#qecho").textContent=`“${q.label}”`;
+  $("#lat").textContent=q.latency+" ms"; $("#semsub").textContent=q.semsub;
+  $("#sortAi").classList.add("on"); $("#sortKw").classList.remove("on");
+  document.querySelectorAll(".chip").forEach(c=>c.classList.toggle("active",c.dataset.id===id));
+  const map=$("#map");
+  map.classList.toggle("open",q.anchor);
+  $("#mapHint").textContent=q.anchor?"Mở tự động — truy vấn có vị trí neo":"Thu gọn — truy vấn này không có vị trí";
+  renderKeyword(); renderSemantic(); fadeInLists();
+}
+
+/* build chips */
+$("#chips").innerHTML=ORDER.map(id=>`<span class="chip" data-id="${id}">${QUERIES[id].label}</span>`).join("")+
+  `<span class="chip" data-id="work">quan cafe yen tinh (không dấu)</span>`;
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>setQuery(c.dataset.id)));
+$("#sortKw").addEventListener("click",()=>setSort("kw"));
+$("#sortAi").addEventListener("click",()=>setSort("ai"));
+$("#mapHead").addEventListener("click",()=>$("#map").classList.toggle("open"));
+
+setQuery("work");
+</script>
+</body>
+</html>
