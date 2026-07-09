@@ -5,9 +5,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from semsearch.api import create_app
-from semsearch.rank import SIGNALS
+from semsearch.rank import SIGNALS, load_weights
 
 app = create_app(prewarm=False)
+
+
+def test_api_serves_tuned_weights():
+    # the live API must rank with the tuned weights.json, not untuned DEFAULT_WEIGHTS,
+    # so the demo matches the reported metrics.
+    assert app.state.pipeline.ranker.weights == load_weights()
 client = TestClient(app)
 
 

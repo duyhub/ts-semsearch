@@ -42,6 +42,26 @@ def test_non_accented_still_parses(parser):
     assert "yên tĩnh" in intent.required_attrs
 
 
+def test_district_word_boundary_no_false_match(parser):
+    # "quận 10" must NOT resolve to the "Quận 1" district (substring collision).
+    intent = parser.parse("quán cà phê quận 10 tphcm")
+    assert intent.district != "Quận 1"
+
+
+def test_subject_terms_extracted_and_block_category(parser):
+    intent = parser.parse("quán bún chả cho khách du lịch")
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+    assert intent.has_residual  # residual content present -> category filter ineligible
+
+
+def test_generic_adjective_is_stopword(parser):
+    # "cafe ngon": 'ngon' is a generic adjective (stopword) -> no residual content.
+    intent = parser.parse("cafe ngon")
+    assert intent.category == "Quán cà phê"
+    assert not intent.has_residual
+    assert intent.content_terms == []
+
+
 def test_abbrev_district_resolves_anchor_and_district(parser):
     # "q1 tphcm" (abbreviated) must resolve to the Quận 1 district anchor and
     # populate intent.district — previously the folded "q1" never matched the

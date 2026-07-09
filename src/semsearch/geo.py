@@ -13,7 +13,7 @@ from collections import defaultdict
 from typing import Sequence
 
 from .data import POI, Anchor
-from .normalize import fold
+from .normalize import contains_token_seq, fold
 
 EARTH_KM = 6371.0
 
@@ -66,7 +66,8 @@ class Gazetteer:
             if key in folded_text:
                 return Anchor(name=disp, lat=lat, lon=lon)
         for key, (lat, lon, disp) in self.districts.items():
-            if key in folded_text:
+            # token-boundary match: "quan 1" must not fire inside "quan 10/11/12"
+            if contains_token_seq(folded_text, key):
                 return Anchor(name=disp, lat=lat, lon=lon)
         for key, (lat, lon, disp) in self.poi_names.items():
             if key and key in folded_text:

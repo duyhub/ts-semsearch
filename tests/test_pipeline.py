@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from semsearch.data import load_pois
+from semsearch.data import content_tokens, load_pois
 from semsearch.pipeline import FullPipeline
 
 
@@ -35,6 +35,41 @@ def test_category_word_dominates_lineup(pipe):
     assert results
     assert results[0].poi.category == "Quán cà phê"
     assert all(r.poi.category == "Quán cà phê" for r in results[:3])
+
+
+def test_pure_category_returns_only_that_category(pipe):
+    # "cafe" is a pure category query -> results are ONLY coffee shops, no mall/gas/restaurant.
+    _, results = pipe.search("cafe", k=10)
+    assert results
+    assert all(r.poi.category == "Quán cà phê" for r in results)
+
+
+def test_pure_location_returns_only_that_district(pipe):
+    # "quan 1 tphcm" is a pure location query -> ONLY District 1 / TP.HCM, nothing else.
+    _, results = pipe.search("quan 1 tphcm", k=10)
+    assert results
+    assert all(r.poi.district == "Quận 1" and r.poi.city == "TP.HCM" for r in results)
+
+
+def test_subject_term_isolates_bun_cha(pipe):
+    # "quán bún chả ..." -> only bún-chả places; R003 is the only POI whose text has it.
+    _, results = pipe.search("quán bún chả cho khách du lịch", k=10)
+    assert results
+    assert results[0].poi.poi_id == "R003"
+    assert all({"bun", "cha"} <= content_tokens(r.poi) for r in results)
+
+
+def test_p055_mall_not_banished_by_category(pipe):
+    # mis-parse (category -> Nhà hàng) must NOT hard-filter; location (Quận 1) keeps M001.
+    _, results = pipe.search("nơi mua sắm có nhiều nhà hàng gần quận 1", k=10)
+    ids = [r.poi.poi_id for r in results]
+    assert "M001" in ids
+    assert all(r.poi.district == "Quận 1" for r in results)  # location constraint honored
+
+
+def test_impossible_strict_query_still_nonempty(pipe):
+    # a district that doesn't exist -> relaxation keeps the result non-empty (G5).
+    assert pipe.rank_ids("cafe quận 99 nowhere")
 
 
 def test_gibberish_still_nonempty(pipe):
