@@ -19,9 +19,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-UI_INDEX = Path(__file__).resolve().parents[2] / "ui" / "index.html"
+UI_DIR = Path(__file__).resolve().parents[2] / "ui"
+UI_INDEX = UI_DIR / "index.html"
 
 from .data import POI, load_pois
 from .explain import generate_reasons
@@ -68,9 +70,25 @@ class SearchResponse(BaseModel):
     meta: Meta
 
 
+class PlaceDetail(BaseModel):
+    """Extra POI fields for the UI's "Chi tiết" (details) panel — not part of the
+    contract-exact /v1/search response, only the enriched /v1/semantic-search."""
+    description: str = ""
+    attributes: list[str] = []
+    rating: float
+    reviewCount: int
+    priceLevel: Optional[int] = None
+    openingHours: Optional[str] = None
+    brand: Optional[str] = None
+    subCategory: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+
+
 class SemanticPlaceResult(PlaceResult):
     breakdown: dict[str, float]
     reasons: list[str]
+    detail: PlaceDetail
 
 
 class IntentEcho(BaseModel):
@@ -86,6 +104,7 @@ class SemanticSearchResponse(BaseModel):
     intent: IntentEcho
     results: list[SemanticPlaceResult]
     meta: Meta
+    weights: dict[str, float] = {}  # the ranker's tuned per-signal weights (for the "Vì sao?" panel)
 
 
 class ErrorDetail(BaseModel):
@@ -121,6 +140,8 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
                prewarm: bool = True) -> FastAPI:
     app = FastAPI(title="Tasco Semantic Search & Ranking", version="0.1.0")
+    if UI_DIR.exists():  # serve vendored assets (Leaflet js/css) offline-safe at /ui/*
+        app.mount("/ui", StaticFiles(directory=str(UI_DIR)), name="ui")
     # Serve the TUNED weights (weights.json), so the live API matches the reported
     # metrics instead of falling back to untuned DEFAULT_WEIGHTS.
     pipeline = FullPipeline(pois if pois is not None else load_pois(),
@@ -236,7 +257,13 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         results = [
             SemanticPlaceResult(**_place(p, s, ref, source).model_dump(),
                                 breakdown={k: round(v, 4) for k, v in b.items()},
-                                reasons=generate_reasons(intent, p))
+                                reasons=generate_reasons(intent, p),
+                                detail=PlaceDetail(
+                                    description=p.description, attributes=p.attributes,
+                                    rating=p.rating, reviewCount=p.review_count,
+                                    priceLevel=p.price_level, openingHours=p.opening_hours,
+                                    brand=p.brand, subCategory=p.sub_category,
+                                    district=p.district, city=p.city))
             for p, s, b in picked
         ]
         anchor = ({"name": intent.anchor.name, "lat": intent.anchor.lat, "lon": intent.anchor.lon}
@@ -244,7 +271,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         echo = IntentEcho(category=intent.category, requiredAttrs=intent.required_attrs,
                           anchor=anchor, city=intent.city, openAfter=intent.open_after)
         resp = SemanticSearchResponse(query=q, intent=echo, results=results,
-                                      meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)))
+                                      meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)),
+                                      weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()})
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
     return app

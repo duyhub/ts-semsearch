@@ -15,11 +15,13 @@ and returns ranked results **with explanations**. Integration-ready with the Tas
 ```
 query ─▶ normalize (fold diacritics, expand abbreviations) ─▶ parse intent (rules)
       ─▶ BM25 + dense (bge-m3) ──RRF──▶ hybrid relevance
-      ─▶ re-rank all POIs by 7 interpretable signals ─▶ faithful explanations
+      ─▶ re-rank all POIs by 8 interpretable signals ─▶ faithful explanations
+      ─▶ hard-constraint filter (pure category / location / subject) ─▶ never-empty
       ─▶ /v1/search (Tasco contract) + /v1/semantic-search ─▶ demo UI
 ```
 
-Full write-up + the 1:1 mapping of our signals to the sponsor's: [`docs/methodology.md`](docs/methodology.md).
+Signals: **7 map 1:1 to the sponsor's `Ranking_Signals`, plus a `category`-fit signal**
+we added. Full write-up + the mapping: [`docs/methodology.md`](docs/methodology.md).
 Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart). OpenAPI: `openapi.json`.
 
 ## Results — all five gates green
@@ -28,8 +30,8 @@ Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart
 |---|---|---|---|
 | G1 | BM25 Recall@5 (tune) | 0.917 | ≥ 0.55 |
 | G2 | hybrid NDCG@5 > max(bm25, dense) (tune) | 0.922 > 0.881 | > |
-| G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.884 / 0.933** | ≥ 0.80 / ≥ 0.75 |
-| G4 | warm p95 latency | 2 ms | < 200 ms |
+| G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.963 / 0.983** | ≥ 0.80 / ≥ 0.75 |
+| G4 | warm p95 latency | 1.1 ms | < 200 ms |
 | G5 | robustness (60 eval + adversarial) | 138/138 | 0 failures |
 
 Reproduce: `uv run python scripts/report_metrics.py` → [`reports/metrics.md`](reports/metrics.md).
@@ -108,7 +110,7 @@ uv run uvicorn semsearch.api:create_app --factory --port 8000
 ## Verify
 
 ```bash
-uv run pytest -q                         # 78 tests
+uv run python -m pytest -q               # 94 tests
 uv run python scripts/robustness.py      # G5 sweep (60 eval + adversarial)
 uv run python scripts/bench_latency.py   # G4 cold vs warm p95
 uv run python scripts/sample_queries.py  # -> reports/sample-queries.md

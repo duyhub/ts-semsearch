@@ -11,3 +11,5 @@ personas/cache/
 .DS_Store
 .idea/
 .nimbalyst/
+*.png
+.playwright-mcp

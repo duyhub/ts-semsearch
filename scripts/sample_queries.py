@@ -35,8 +35,9 @@ QUERIES = [
     ("Mixed language", "coffee shop with wifi to work"),
 ]
 
-SIG_LABEL = {"semantic": "ngữ nghĩa", "attributes": "thuộc tính", "distance": "khoảng cách",
-             "rating": "đánh giá", "popularity": "phổ biến", "open_now": "đang mở", "review": "tags"}
+SIG_LABEL = {"semantic": "ngữ nghĩa", "attributes": "thuộc tính", "category": "danh mục",
+             "distance": "khoảng cách", "rating": "đánh giá", "popularity": "phổ biến",
+             "open_now": "đang mở", "review": "tags"}
 
 
 def main() -> None:
@@ -57,7 +58,7 @@ def main() -> None:
         lines.append("")
         for i, r in enumerate(results, 1):
             top3 = sorted(r.breakdown.items(), key=lambda kv: kv[1], reverse=True)[:3]
-            sig = ", ".join(f"{SIG_LABEL[k]} {v:.2f}" for k, v in top3)
+            sig = ", ".join(f"{SIG_LABEL.get(k, k)} {v:.2f}" for k, v in top3)
             reasons = " · ".join(r.reasons)
             lines.append(f"{i}. **{r.poi.name}** ({r.poi.category}, {r.poi.district}) — "
                          f"score {r.score:.3f}")
