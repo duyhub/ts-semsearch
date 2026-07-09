@@ -1,0 +1,225 @@
+{
+  "engine": "full",
+  "split": "test",
+  "n": 20,
+  "overall": {
+    "recall@3": 0.9333333333333332,
+    "recall@5": 1.0,
+    "ndcg@5": 0.8835792767935458,
+    "mrr": 0.8458333333333334
+  },
+  "ci": {
+    "metric": "ndcg@5",
+    "lo": 0.7862702752555248,
+    "hi": 0.962045448889876
+  },
+  "by_difficulty": {
+    "Hard": {
+      "n": 8,
+      "recall@3": 0.9583333333333333,
+      "recall@5": 1.0,
+      "ndcg@5": 0.9512474030282579,
+      "mrr": 0.9375
+    },
+    "Medium": {
+      "n": 10,
+      "recall@3": 0.9,
+      "recall@5": 1.0,
+      "ndcg@5": 0.8430676558073393,
+      "mrr": 0.7916666666666667
+    },
+    "Easy": {
+      "n": 2,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.8154648767857287,
+      "mrr": 0.75
+    }
+  },
+  "by_category": {
+    "Semantic Search": {
+      "n": 6,
+      "recall@3": 0.9444444444444443,
+      "recall@5": 1.0,
+      "ndcg@5": 0.9349965373710106,
+      "mrr": 0.9166666666666666
+    },
+    "Location-Aware Search": {
+      "n": 2,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    "Intent-Based Search": {
+      "n": 2,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    "Attribute Search": {
+      "n": 5,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.9,
+      "mrr": 0.8666666666666668
+    },
+    "Discovery Search": {
+      "n": 3,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.7103099178571525,
+      "mrr": 0.611111111111111
+    },
+    "Mixed Language Search": {
+      "n": 2,
+      "recall@3": 0.5,
+      "recall@5": 1.0,
+      "ndcg@5": 0.7153382790366966,
+      "mrr": 0.625
+    }
+  },
+  "per_query": [
+    {
+      "query_id": "P004",
+      "recall@3": 0.6666666666666666,
+      "recall@5": 1.0,
+      "ndcg@5": 0.6099792242260635,
+      "mrr": 0.5
+    },
+    {
+      "query_id": "P005",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P014",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P017",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P022",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P023",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P024",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P032",
+      "recall@3": 0.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.4306765580733931,
+      "mrr": 0.25
+    },
+    {
+      "query_id": "P034",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P038",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.5,
+      "mrr": 0.3333333333333333
+    },
+    {
+      "query_id": "P039",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P043",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.5,
+      "mrr": 0.3333333333333333
+    },
+    {
+      "query_id": "P044",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P046",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P048",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P050",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P052",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.6309297535714574,
+      "mrr": 0.5
+    },
+    {
+      "query_id": "P058",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P059",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P060",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    }
+  ]
+}

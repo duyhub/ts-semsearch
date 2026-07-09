@@ -19,8 +19,12 @@ from typing import Sequence
 from .data import POI, QueryIntent, RankedResult
 from .embeddings import get_embedder
 from .explain import generate_reasons
-from .geo import Gazetteer
+from .geo import Gazetteer, haversine
 from .normalize import fold
+
+# When a query resolves an explicit location anchor, "gần X" must mean near X:
+# near-anchor POIs rank first, far ones drop to the tail (recall preserved).
+ANCHOR_RADII_KM = (30.0, 150.0)  # try tight metro radius, then wider; else no gate
 from .parse import Parser
 from .rank import DEFAULT_EVAL_NOW, DEFAULT_WEIGHTS, LinearRanker
 from .retrieve import BM25Index, DenseIndex, rrf_fuse
@@ -70,7 +74,25 @@ class FullPipeline:
             )
             out.append((p.poi_id, s, b))
         out.sort(key=lambda t: t[1], reverse=True)
+        if intent.anchor is not None:
+            out = self._anchor_gate(out, intent)
         return out
+
+    def _anchor_gate(self, ranked, intent):
+        """Float near-anchor POIs to the top; far ones become the tail. Relax the
+        radius if too few survive; if even the widest radius yields <3, skip the
+        gate (keep pure score order) rather than starve the result."""
+        a = intent.anchor
+        def near(radius):
+            return [t for t in ranked if haversine(a.lat, a.lon, self.by_id[t[0]].lat,
+                                                    self.by_id[t[0]].lon) <= radius]
+        for radius in ANCHOR_RADII_KM:
+            hits = near(radius)
+            if len(hits) >= 3:
+                keep = {t[0] for t in hits}
+                far = [t for t in ranked if t[0] not in keep]  # both keep score order
+                return hits + far
+        return ranked
 
     def rank_ids(self, query_text: str) -> list[str]:
         return [pid for pid, _, _ in self.rank_scored(query_text)]
