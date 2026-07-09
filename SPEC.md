@@ -10,8 +10,14 @@ spec phase by phase.
 |---|---|---|
 | Language | Python 3.11, uv/venv | — |
 | Retrieval | `rank_bm25` (BM25Okapi) + in-memory dense matrix (numpy) | — |
-| Embeddings | Amazon Bedrock `cohere.embed-multilingual-v3` (or Titan Embed v2 — pick by measured NDCG) | local `BAAI/bge-m3` via sentence-transformers (offline safety) |
-| Query parse LLM | Claude on Bedrock, tool-forced JSON | rule-based parser (always available) |
+| Embeddings | **local `BAAI/bge-m3`** via sentence-transformers (primary — build/tune/G3 run against this; can't be killed by wifi) | Bedrock `cohere.embed-multilingual-v3` / Titan v2 as an env-selectable, **measured** provider (Built-with-AWS core; comparison recorded in `reports/embedding-choice.md`) |
+| Query parse LLM | **rule-based parser** (primary, always available; the measured demo path) | Claude on Bedrock, tool-forced JSON — optional enhancement, ablated for retrieval contribution (see TODOS) |
+
+> **Provider posture (eng-review D1):** local-first. The system that is built, tuned, gated
+> (G3), and demoed is the local one, so a venue-wifi outage degrades nothing. Bedrock stays a
+> real, selectable core component (AWS-bonus eligible) with its numbers recorded; it is never
+> the default the gates run against. Both doc-embedding matrices are pre-built and
+> provider-stamped (see §4) before rehearsal.
 | API | FastAPI + uvicorn | — |
 | UI | Next.js + react-leaflet (OSM tiles) | Streamlit single-file (2h emergency build) |
 | Deploy | AWS App Runner (or EC2 + caddy) | localhost + ngrok for demo |
@@ -27,7 +33,8 @@ tasco-semsearch/
 ├── data/
 │   ├── raw/ai_maps_track2_dataset_participants.xlsx
 │   ├── curated/admin_aliases.json  # hand-curated old↔new admin names (committed)
-│   └── derived/               # pois.parquet, eval.parquet, embeddings.npy (gitignored)
+│   ├── eval_split.json         # stratified 40/20 tune/test split (COMMITTED — NFR-6/7)
+│   └── derived/               # pois.parquet, embeddings.*.npy (gitignored cache)
 ├── src/semsearch/
 │   ├── data.py                # xlsx → typed frames
 │   ├── normalize.py           # Vietnamese text normalization
@@ -89,6 +96,22 @@ relevance (first id gain 3, second 2, rest 1) for NDCG. All metric reports break
 per-difficulty **and per-query_category** (PRD FR-9) — the Mixed Language and Discovery
 subsets must be visible, not hidden inside the headline number.
 
+**Phase 0 verified data facts (from the actual xlsx — do not re-derive):**
+- Columns map: `poi_name→name`, `latitude→lat`, `longitude→lon`, `popularity_score→popularity`.
+  `brand` and `price_level` are always present (no nulls) though the dataclass keeps them optional.
+- `poi_id` is **bare** (`C001`, `R002`, `S001`, `G010`…); eval `expected_top_poi_ids` uses bare ids.
+  The API prepends `poi:` on output (§9). **Never infer category from the id prefix** — prefixes
+  (G=72/111) span multiple categories and are opaque.
+- `attributes`, `tags`, `expected_top_poi_ids`, `skills_tested` are all `;`-separated;
+  `expected_semantic_requirements` and `ranking_signals_to_use` are comma-separated.
+- `opening_hours` has **three forms**: `HH:MM-HH:MM`, literal **`24/7`** (always open), and
+  **overnight ranges that cross midnight** (`17:00-01:00`, `18:00-03:00`). `open_now` (§6) must
+  treat `24/7` as always-open and, when `end < start`, count open if `now ≥ start OR now ≤ end`.
+- Ranges: `rating` 3.8–4.7 (narrow — confirms the low-`m` Bayesian prior, TODOS TODO-2),
+  `review_count` 120–15 800, `popularity` 50–98, `price_level` 1–4, 4 cities, 12 categories.
+- Eval `query_category` counts: Semantic 18, Attribute 14, Intent 8, Location 6, Discovery 6,
+  Mixed 5, Category 2, **POI 1** — the n=1/n=2 cells are anecdotal; report n, don't CI an n=1 cell.
+
 ## 3. Vietnamese normalization (`normalize.py`)
 
 - `fold(s)`: NFD → strip combining marks, `đ→d`, lowercase, collapse whitespace/punct.
@@ -103,11 +126,20 @@ subsets must be visible, not hidden inside the headline number.
   `Mixed Language Search`. Normalization passes English terms through untouched (multilingual
   embeddings handle them); the abbreviation dict maps common English category words
   ("coffee shop" → "quán cà phê", "hotel" → "khách sạn") for the BM25 side.
+- **Single canonicalization module (eng-review C2).** The attribute canonicalizer, category/typo
+  canonicalizer, and gazetteer/abbreviation matcher are the same operation — fold a token, match it
+  against a closed vocab, replace with the canonical form. Implement one primitive
+  `canonicalize(token, vocab, max_edit) -> str | None`; the attribute/category/gazetteer matchers
+  are thin callers passing their own vocab and **per-vocab** edit threshold. Do not build three
+  divergent copies.
 - Typo canonicalizer (PRD FR-3): after folding + abbreviation expansion, query tokens
   (len ≥ 4) that match no vocabulary entry are fuzzy-matched with edit distance ≤ 1 against
   the closed vocabularies (category keywords, attribute taxonomy, gazetteer names) and
   replaced by the canonical form ("yen tihn" → "yen tinh"). Query side only — documents
-  are clean.
+  are clean. **Guard precision:** a big merged vocab means a valid 4+char word can sit within
+  edit-distance 1 of an unrelated canonical term and be silently "corrected" into the wrong
+  meaning, changing retrieval before it ever runs. Test: a set of known near-collisions must
+  **not** be rewritten.
 
 ## 4. Embedding document composition
 
@@ -117,17 +149,37 @@ subsets must be visible, not hidden inside the headline number.
 Query side: embed the **normalized query + expanded intent terms** (e.g. append resolved
 attribute names) — measured on tune split; keep whichever wins.
 
-Embeddings precomputed at ingest into `embeddings.npy` (111×d); cosine sim at runtime is a
-single matvec. Disk-cache query embeddings keyed by text hash.
+Embeddings precomputed at ingest into a **provider-stamped** matrix (`embeddings.{provider}.{model_id}.npy`
+plus a manifest recording `provider`, `model_id`, `dim`, `n_docs`); cosine sim at runtime is a
+single matvec. **The loader asserts the active query provider matches the doc-matrix manifest and
+refuses (or rebuilds) on mismatch** — bge-m3, cohere-v3 and titan-v2 are all 1024-d, so a mismatch
+would otherwise return silent garbage, not an error (eng-review A2). Disk-cache query embeddings
+keyed by `hash(f"{provider}:{model_id}:{text}")`, **never text alone** — a text-only key returns
+the wrong model's vector during provider comparison. Test: same text under two providers yields two
+distinct cached vectors.
 
 ## 5. Retrieval (`retrieve.py`)
 
-- `BM25Index.search(text, k=30) -> list[(poi_id, score)]` over folded tokens.
-- `DenseIndex.search(text, k=30)` cosine over the matrix.
-- `rrf_fuse(runs, k=60, c=60)`: standard reciprocal-rank fusion → top-30 candidates.
-- Hard filters applied *after* fusion but *before* ranking: category (if confidently parsed),
-  city/district, `required_attrs ⊆ poi.attributes` — with a relaxation rule: if hard filter
-  yields <3 results, demote newest constraint to soft.
+- `BM25Index.search(text)` over folded tokens; `DenseIndex.search(text)` cosine over the matrix —
+  both score the **full 111-doc corpus** (no top-k cut).
+- `rrf_fuse(runs, c=60)`: standard reciprocal-rank fusion, producing a fused **relevance score for
+  every POI** — used to compute the `semantic` ranking signal, **not** as a candidate gate.
+- **Re-rank over hybrid, no destructive filtering (OV1 + G3-review).** Hybrid RRF relevance is
+  computed for the *entire corpus* (no top-k cut), then the 7-signal ranker RE-ORDERS all POIs using
+  that hybrid relevance as its `semantic` signal plus attributes/distance/rating/popularity/
+  open_now/review. Category and required-attributes are **soft signals, not AND-filters** — an
+  earlier filter-then-rank design (with <3-survivor relaxation) was measured to *lower* recall
+  (ablation: Recall@5 0.954→0.879) by deleting relevant POIs, so it was removed. Because
+  `semantic == hybrid relevance`, all-weight-on-semantic reproduces hybrid exactly, so tuning makes
+  full ≥ hybrid by construction (ablation confirms: full NDCG@5 0.935 > hybrid 0.922 on tune).
+- Test: `full (+re-rank)` beats `hybrid` on the ablation (NDCG@5, Recall@5).
+- **Empty-set backstop (eng-review C1, protects G5).** Relaxation loosens filters but cannot
+  manufacture a result when retrieval itself is empty (emoji-only, gibberish, or fully
+  out-of-vocabulary `q`). If the survivor set is still empty after retrieval + relaxation, return
+  top-N by `popularity_score` (or nearest to request `lat`/`lon` when present), and mark
+  `meta.source = "fallback"` so it stays honest. A present-but-meaningless `q` is a *valid* request
+  and must return ≥1 result (only a missing/empty `q` is a 400). Test: each adversarial input in the
+  G5 list returns ≥1 result.
 
 ## 6. Ranking (`rank.py`)
 
@@ -136,12 +188,12 @@ normalized to [0,1]:
 
 | Signal | Sponsor signal | Definition |
 |---|---|---|
-| `semantic` | relevance_score | min-max-scaled cosine sim within candidate set |
+| `semantic` | relevance_score | **fixed, query-independent** transform of the fused RRF/cosine relevance — clamp+rescale a calibrated cosine band (e.g. `[0.2,0.8]→[0,1]`), **NOT per-query min-max**. Min-max within the candidate set forces the top result to 1.0 even on weak matches, inflating confidence, corrupting the explanation bars (a scored dimension), and making tuned weights depend on candidate-set composition (worse private-eval transfer). Test: two candidate sets with the same top POI yield the same semantic score (eng-review OV6) |
 | `attributes` | business_attributes | matched required+soft attrs / requested (taxonomy canonical, structured `attributes` field only) |
 | `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; 0.5 neutral if no anchor |
-| `rating` | rating_score | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, m=200, C=global mean, scaled from [3.5,5] |
+| `rating` | rating_score | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, C=global mean, scaled from [3.5,5]. **m is a low fixed prior (~20–50, not 200)** — on 111 POIs m=200 shrinks nearly every POI to the global mean and flattens the signal; verify the smoothed-rating spread in Phase 4 (eng-review TODO-2) |
 | `popularity` | popularity_score | popularity_score / 100 |
-| `open_now` | business_attributes (time) | 1 if open at query time / satisfies `open_after`, else 0.3 (0.5 if unknown) |
+| `open_now` | business_attributes (time) | 1 if open at the **injected reference time** / satisfies `open_after`, else 0.3 (0.5 if unknown). Time is injected as `now: datetime`, never wall-clock: eval passes a committed constant (e.g. Sat 14:00 Asia/Ho_Chi_Minh), the API passes real now — otherwise the same query scored at 10am vs 11pm produces different rankings and G3 stops being reproducible (eng-review A1) |
 | `review` | review_signal | fraction of requested needs (required+soft, folded) found in POI `tags` + `description` — distinct from the structured attributes field |
 
 `freshness_score` is the sponsor's 7th listed signal but the dataset has no recency field —
@@ -154,15 +206,28 @@ breakdown retained. Initial weights: semantic .32, attributes .22, distance .15,
 popularity .08, open .05, review .08.
 
 **Tuning (`tune.py`):** split eval 40 tune / 20 test **stratified by difficulty** (fixed seed,
-split committed to repo). Coordinate ascent on NDCG@5 over weight grid (0–0.5 step 0.05,
-renormalized). Never evaluate test split during tuning; `run_eval.py --split test` is the
-reported number.
+split committed to repo). **Regularize selection (eng-review A3):** the test split is only 20
+queries — one query ≈ 5 pts of Recall — and three things are selected on the 40 tune queries
+(embedding provider, query-side composition, and the 7 weights), so over-fitting to tune noise is
+the real risk for private-eval transfer. Use a **coarse** weight grid, **cap** coordinate-ascent
+passes, and **prefer round weights** when candidates tie within noise. Never evaluate the test
+split during tuning; `run_eval.py --split test` is the reported number. **Report it honestly:**
+every gate table shows a **bootstrap CI** on the test-split metric and **per-difficulty /
+per-category n** (Hard n≈8), so the headline is "0.80 ±ε, Hard n=8", not a bare point estimate.
+G3's 0.80/0.75 is an **internal target, not a sacred gate** — take a quick BM25+dense sanity read
+on the tune split before treating it as pass/fail, and never let it block UI start (see RUNBOOK).
 
 ## 7. Query parsing (`parse.py`)
 
 1. **Rule parser (always runs):** folded-text regex + gazetteer. Category keywords, district/city
-   patterns, attribute canonicalizer hits, "gần X" → anchor lookup (gazetteer = all POI names +
-   districts + landmarks from dataset + ~20 hand-added city landmarks like "hồ gươm").
+   patterns, attribute canonicalizer hits, "gần X" → anchor lookup. **Gazetteer breadth
+   (eng-review OV7):** all POI names + districts from the dataset **plus a broad offline landmark
+   extract** (OSM/GeoNames or Wikipedia landmark lists) for the four cities — NOT a ~20-entry hand
+   list sized to the public eval. A hand list sized to observed queries both (a) fails to generalize
+   to the private set's landmarks (anchor → null → distance signal goes neutral → location queries
+   silently degrade with no error) and (b) borders on fitting to the public eval (NFR-6 tension).
+   Location-category metrics are reported as their own row so a private-set collapse is visible
+   before Demo Day.
    Coordinate detection (PRD FR-2): a decimal lat/lon pair in the query (regex, sanity-bounded
    to Vietnam: lat 8–24, lon 102–110) becomes the anchor directly — nearby-search behavior.
    Ambiguous gazetteer names (PRD FR-2) resolve by fixed policy: (a) city/district context in
@@ -209,28 +274,130 @@ checking all numbers/attrs appear in source facts; on violation, fall back to bu
 - Optional P2 (PRD FR-13): `GET /v1/poi/{id}` (alias `/poi/{id}`) with `include=ai_summary`
   served by the explanation layer.
 
-**Latency budget:** parse(rules) 5ms + cached-LLM 0ms + BM25 2ms + dense matvec 1ms + rank 2ms
-→ **p95 < 150ms** without cold LLM; first-seen query with LLM parse < 1s. `bench_latency.py`
-proves it.
+**Latency budget:** the sub-10ms budget (parse-rules 5ms + BM25 2ms + dense matvec 1ms + rank 2ms)
+assumes the query is **already embedded**. A genuinely novel query (private eval, a judge's ad-hoc
+question) has no cache entry, so dense retrieval runs a **cold bge-m3 forward pass** (~100–300ms on
+a laptop CPU), plus a one-time multi-second model *load* if lazy (eng-review P1). Mitigations:
+(1) **load the embedding model in the FastAPI startup hook**, never on first request;
+(2) **pre-warm the query-embed cache** with all eval + rehearsed demo queries at boot so the demo
+stays snappy; (3) `bench_latency.py` reports **cold p95 AND warm p95 separately** — the honest
+number for a novel query, not just the warm one. Target: **warm p95 < 200ms** (G4); cold p95
+reported as-is. `search.py` also takes an injected `now: datetime` (A1) — eval passes the committed
+constant, API passes real now.
 
-## 10. UI (Next.js)
+## 10. UI (Next.js) — focused on the money shot (CEO review)
 
-Single page: search box (debounced) → left: ranked cards (name, badges for matched attrs,
-score bar chart per signal, reason line) → right: Leaflet map with numbered pins + anchor marker.
-Toggle: "Keyword (BM25 only)" vs "Semantic (full)" side-by-side columns — this is the demo money
-shot. Secondary route `/metrics`: renders `reports/metrics.json` + ablation table as slides-ready
-visuals. Vietnamese UI labels.
+**Effort posture (CEO review 0C-bis):** focused Next.js. Concentrate polish on the ONE screen
+judges watch live — the keyword-vs-semantic side-by-side. The full spec below is P0 for that
+screen; `/metrics` (FR-15) is **P2 / cut-first** (the deck already carries the numbers, and a route
+judges never open is not worth night-of hours).
+
+**Implemented stack (Phase 7 decision):** shipped as a **lean vanilla HTML/CSS/JS single-page app**
+(`ui/index.html`) served by the FastAPI app at `/` (single origin, no CORS, no Node build step),
+fetching the live `/v1/search?engine=keyword` (keyword lane) and `/v1/semantic-search` (full
+pipeline). This delivers the same money-shot screen as the specced Next.js while honoring the
+CEO/design review's anti-rabbit-hole intent. Serve with
+`uv run uvicorn semsearch.api:create_app --factory`.
+
+Single page. **Layout (design review DD1):** the two result columns own the full screen width —
+LEFT "Keyword (BM25)" vs RIGHT "Semantic (AI)", side by side — **this is the demo money shot** and
+gets the most polish. The Leaflet map is NOT a third column (three columns are illegible at 1080p
+from 5m); it lives in a collapsible panel below the fold that auto-opens for location queries
+(anchor detected, e.g. "gần hồ gươm"), where numbered pins + anchor marker actually add meaning.
+Search box (debounced) + query chips sit above both columns; the latency badge sits in the results
+header.
+
+**Demo money-shot touches (CEO review, SELECTIVE EXPANSION — accepted):**
+- **Query chips (Delight-1):** a row of ~8 one-tap canonical queries (covering the scenario
+  categories) above the search box. Removes live Vietnamese-typing friction on stage, guarantees
+  the rehearsed impressive queries run, and models good intent queries for judges who try their own.
+- **Animated re-rank (Delight-2):** on toggle keyword↔semantic, result cards animate to their new
+  positions (FLIP/position-keyed transition by `poi_id`). Makes the ranking change *felt*, not
+  read — the central pitch in one kinetic moment.
+- **Live latency badge (Delight-3):** render the server-reported query time (from response `meta`)
+  next to results (e.g. "38ms"). Makes the NFR-1 speed claim + no-vector-DB architecture story
+  visible live; pairs with the cold/warm split (P1) so the shown number is honest.
+- **Match highlighting (Delight-4):** highlight matched required/soft attributes on each card
+  (subtle emphasis, matched terms only — keep it to required/soft attrs so it doesn't add noise)
+  so the query→result link is instant. Uses data already in the breakdown. Turns the explainability
+  dimension into a visible query→result link at near-zero cost.
+
+### Design spec (design review)
+
+**Result card hierarchy (DD2 — signal breakdown).** Each card, top to bottom: rank number + POI
+name (largest text) → matched-attribute badges (✓ wifi, ✓ yên tĩnh) with Delight-4 highlighting →
+composite score + the **top-3 signals that drove this result's rank** as labeled colored bars (not
+all 7) → one-line Vietnamese reason → rating (`4.6★ · 1.560 đánh giá`) + distance. **Click/hover
+expands the full 7-signal breakdown** — the "audit any result" demo beat. Rationale: ~10 visible
+cards × 7 bars = 70 bars is illegible clutter at 5m; top-3 + expand serves explainability without
+the wall of color (subtraction default).
+
+**7-signal color system.** One fixed **colorblind-safe categorical palette** (e.g. Okabe-Ito or
+ColorBrewer Set2), one hue per signal, reused everywhere the signal appears (card bars, expanded
+breakdown). Defined as CSS variables (`--signal-semantic`, `--signal-distance`, …). Bars carry a
+text label too (color is never the only channel). Same hue = same signal across both columns so the
+comparison reads.
+
+**Interaction states (Pass 2 — was unspecified).**
+
+| State | What the user sees |
+|---|---|
+| Loading | Per-column skeleton cards (not a spinner); latency badge shows "…"; chips stay tappable |
+| Empty (`meta.source="fallback"`, C1 backstop) | Honest line: "Không có kết quả khớp — đây là các địa điểm phổ biến gần bạn" + the fallback results; never a bare "No results" |
+| Error (API 5xx/timeout) | Inline card in the results area: "Máy chủ đang bận, thử lại" + a retry button; the other column and chips stay usable |
+| No anchor (location query, gazetteer miss) | Map panel stays collapsed; a subtle note "Không xác định được vị trí neo" on affected cards; distance signal renders neutral, not blank |
+| Partial (semantic ready, map tiles slow) | Results render immediately; map panel shows its own loading state independently |
+
+**Typography.** A real Vietnamese-first typeface with full diacritic coverage — **Be Vietnam Pro**
+(purpose-built for Vietnamese) for display + body; NOT system-ui / Inter / Roboto as primary. Two
+weights max (e.g. 700 display, 400/500 body).
+
+**Legibility / contrast (projector, 5m).** Body text ≥ 18px (this is a projected demo, not a laptop
+screen); POI names ≥ 28px; all text ≥ 4.5:1 contrast on its background; dark theme with a single
+accent. Diacritics preserved everywhere (never fold in the UI — NFR-4).
+
+**Motion.** Animated re-rank (Delight-2): 250–300ms position transition, ease-out, position-keyed by
+`poi_id`; respect `prefers-reduced-motion` (fall back to instant reorder). No decorative motion.
+
+**Responsive scope (Pass 6).** **Projector/desktop-first (≥1280px) is the only supported target for
+the demo** — explicitly NOT responsive to mobile (see NOT-in-scope). Stated so no one spends demo
+hours on a breakpoint no judge will see.
+
+Secondary route `/metrics` (**P2, cut-first**): renders `reports/metrics.json` + ablation table as
+slides-ready visuals. Vietnamese UI labels; diacritics rendered correctly; legible at 1080p from 5m.
 
 ## 11. Testing & gates
 
+Core-logic tests are **P0 and written alongside the code (TDD)**, not implied (eng-review T1). The
+modules that *are* the product must be explicitly covered:
+
 - `tests/test_normalize.py` — folding, abbreviations ("cf q1 co wifi" → expected tokens),
-  typo fuzzy-matching ("cafe yen tihn" → canonical tokens).
-- `tests/test_eval.py` — metric math on toy fixtures (hand-computed NDCG).
+  typo fuzzy-matching ("cafe yen tihn" → canonical tokens), and **near-collision guard** (known
+  4+char words that must NOT be rewritten — C2).
+- `tests/test_eval.py` — metric math on toy fixtures (hand-computed NDCG); equal-score tie /
+  stable-sort determinism.
 - `tests/test_parse.py` — ≥15 canonical queries → expected QueryIntent (golden JSON),
-  including coordinate-in-query, ambiguous-anchor, brand-query, and old-vs-new-admin-name
-  pair cases ("q1 tphcm" ≡ "phường sài gòn" → same anchor/district).
+  including coordinate-in-query, all three ambiguous-anchor policy branches (a→b→c), brand-query,
+  and old-vs-new-admin-name pair cases ("q1 tphcm" ≡ "phường sài gòn" → same anchor/district).
+- `tests/test_retrieve.py` — rrf_fuse ordering; hard-filter correctness; relaxation branch
+  (<3 → demote); **a relevant POI at low fusion rank still surfaces** (OV1).
+- `tests/test_rank.py` — each of the 7 signals in isolation: Bayesian rating (hand-computed
+  fixture), distance decay + neutral-no-anchor, attribute match, **semantic fixed-transform
+  invariance** (same top POI across two candidate sets → same score, OV6), and **open_now
+  determinism** (identical rankings across two injected `now` times, A1); LinearRanker breakdown
+  sums to score.
+- `tests/test_geo.py` — haversine against a known-distance fixture; anchor resolution + gazetteer.
+- `tests/test_explain.py` — faithfulness validator rejects any reason whose numbers/attrs are not
+  in the source facts (FR-8).
+- `tests/test_embeddings.py` — provider+model_id cache key: same text under two providers →
+  two distinct vectors; loader refuses a doc-matrix/provider mismatch (A2).
+- `tests/test_search.py` — empty-candidate backstop returns ≥1 result for each G5 adversarial input,
+  flagged `meta.source="fallback"` (C1).
+- `tests/test_integrity.py` — **NFR-6 guard: tune.py and the committed weights never read the test
+  split.** The pitch's entire credibility rests on this; it must be a test, not a promise.
 - `tests/test_api_contract.py` — response shape strictly matches PDF PlaceResult; error
-  responses match the PDF ErrorResponse shape and code table.
+  responses match the PDF ErrorResponse shape and code table; bbox parse, limit clamp (>20),
+  missing-`q` → 400, and X-Request-Id / X-Locale / X-Timezone header handling.
 - **Quality gates (enforced in runbook):**
   - G1 BM25 baseline: Recall@5 ≥ 0.55 (tune split)
   - G2 hybrid > max(bm25, dense) on NDCG@5 (tune)

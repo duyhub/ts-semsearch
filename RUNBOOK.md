@@ -76,18 +76,27 @@ Approve the plan; fix schema surprises now, not at hour 6.
 > 10 worst queries with their tokenizations and iterate on normalization until it passes.
 
 ### Phase 3 — Dense + hybrid (75 min)
-> Implement embeddings.py (Bedrock cohere multilingual + bge-m3 fallback + disk cache, doc_text
-> per SPEC §4), DenseIndex, rrf_fuse. Compare bedrock-vs-local on tune NDCG and pick the winner
-> (record numbers in reports/embedding-choice.md).
+> Implement embeddings.py **local-first (eng-review D1): bge-m3 is the primary provider** the
+> build/tune/gates run against; Bedrock cohere/titan is an env-selectable *measured* provider.
+> **Provider-stamp the doc matrix** (`embeddings.{provider}.{model_id}.npy` + manifest) and key the
+> query cache by `hash(provider:model_id:text)` (SPEC §4, eng-review A2) — a text-only key or an
+> unstamped matrix returns silent garbage on any provider switch. **Filter the full corpus, then
+> rank survivors — no top-30 cut** (SPEC §5, eng-review OV1). DenseIndex, rrf_fuse (relevance score,
+> not a gate). Record bge-m3-vs-Bedrock on tune NDCG in reports/embedding-choice.md; pre-build BOTH
+> stamped matrices before rehearsal.
 > Gate G2: hybrid NDCG@5 > max(bm25, dense) on tune split. Print the 3-row comparison.
 
 ### Phase 4 — Ranker + tuning (90 min) → *the core ML deliverable*
 > Implement geo.py (gazetteer from dataset + landmark list), rank.py signals per SPEC §6 table,
 > LinearRanker with breakdown, tune.py coordinate ascent on tune split only. Then evaluate ONCE
 > on test split.
-> Gate G3: NDCG@5 ≥ 0.80 AND Recall@3 ≥ 0.75 on test. If short, analyze per-difficulty and
-> per-query_category failures on the TUNE split only, improve signals (not memorization), rerun.
-> Also run scripts/ablation.py and commit reports/ablation.md.
+> Regularize weight search (coarse grid, capped ascent, round-weight tie-break — eng-review A3) to
+> avoid over-fitting the 40 tune queries. Take a quick BM25+dense sanity read on tune BEFORE
+> treating 0.80 as a hard number.
+> Gate G3 (internal target, NOT a build blocker): NDCG@5 ≥ 0.80 AND Recall@3 ≥ 0.75 on test,
+> **reported with a bootstrap CI and per-difficulty/per-category n** (Hard n≈8). If short, analyze
+> per-difficulty and per-query_category failures on the TUNE split only, improve signals (not
+> memorization), rerun. Also run scripts/ablation.py and commit reports/ablation.md.
 
 **Your job during Phase 4:** watch the failure analyses — this is where your ML judgment beats
 the agent's. Typical fixes: anchor resolution misses, attribute canonicalization gaps, hard-filter
@@ -106,20 +115,33 @@ too aggressive.
 > Gate G4: contract tests green; warm p95 < 200ms over all 60 eval queries.
 
 ### Phase 7∥ — UI (2.5 h, parallel worktree B)
-> Build ui/ per SPEC §10: search page with ranked cards (signal-breakdown bars, matched-attr
-> badges, reasons), react-leaflet map with numbered pins, and the keyword-vs-semantic
-> side-by-side toggle hitting /v1/search vs /v1/semantic-search. /metrics page renders
-> reports/metrics.json + ablation. Vietnamese labels. Dark, clean, demo-legible at 1080p from
-> 5 meters (big fonts).
+> Build ui/ per SPEC §10, **focused on the money shot (CEO review):** search page with ranked
+> cards (signal-breakdown bars, matched-attr badges, reasons), react-leaflet map with numbered
+> pins, and the keyword-vs-semantic side-by-side toggle hitting /v1/search vs /v1/semantic-search.
+> **Prioritize the toggle screen.** Include the three accepted demo touches: one-tap query chips
+> (~8 canonical scenarios), animated re-rank on toggle (position-keyed by poi_id), and a live
+> latency badge from response meta, and matched-term highlighting (matched required/soft attrs
+> emphasized on each card). **/metrics is P2/cut-first** — build only if time remains after the
+> money shot is polished. Vietnamese labels. Dark, clean, demo-legible at 1080p from 5 meters.
 
-Start Phase 7 as soon as Phase 4 passes (API shape is already fixed by SPEC); it runs while you
-do Phases 5–6.
+**Start Phase 7 off the frozen `search.py`/API interface (SPEC §2, §9) — do NOT gate it on G3
+passing (eng-review OV4).** The UI needs the interface, not a passing metric; if G3 wobbles the UI
+must not stall. Build against a **mock server** serving `/v1/search` + `/v1/semantic-search` from
+the SPEC shapes so the UI's keyword-vs-semantic toggle is exercisable before the real API is green.
+**Move the first real UI↔API smoke test into Phase 6/7** (as soon as the API boots) — the toggle
+needs BOTH endpoints live at once, a hidden join that must not first surface in Phase 8.
 
-### Phase 8 — Integration + robustness (60 min, back to main session)
-> Merge worktrees. Gate G5: robustness sweep — every one of the 60 eval queries plus this
+### Phase 8 — Integration + robustness (**2h+**, back to main session)
+> **Rebudgeted from 60 min (eng-review OV5):** first real end-to-end integration of two
+> independently-built worktrees always surfaces bugs, and the G5 sweep will find more. If the
+> Phase 6/7 smoke test already ran, this is smaller — but never budget it at one hour.
+> Merge worktrees. Confirm the **empty-candidate backstop** (SPEC §5, C1) is wired so no valid `q`
+> returns zero results. Gate G5: robustness sweep — every one of the 60 eval queries plus this
 > adversarial list (empty string, emoji, all-caps no-diacritics, 200-char rambling query, English
 > query, pure address, coordinate-only query, unknown city) returns HTTP 200 with ≥1 result and
 > no exception. Fix everything found.
+> Verify the embedding model loads at **server startup** and the query-embed cache is **pre-warmed**
+> with eval + demo queries; bench_latency.py reports **cold AND warm p95** (eng-review P1).
 > Re-run all gates G1–G5 and commit.
 
 ### Phase 9 — Submission artifacts (45 min)
@@ -137,7 +159,8 @@ exact demo script), submit by 07:30.
 
 | Symptom | Action |
 |---|---|
-| Bedrock quota/latency issues | flip `EMBED_PROVIDER=local`; bge-m3 numbers were recorded in Phase 3, story unchanged |
+| Bedrock quota/latency/outage | none needed at demo — **local bge-m3 is already the default** (D1). Bedrock is only exercised for the recorded comparison; its absence doesn't touch the demo or gates |
+| Provider switch returns garbage | doc matrix + query cache are provider-stamped (A2); the loader refuses a mismatch. **Pre-build BOTH stamped matrices before rehearsal** — a switch reads the matching matrix or rebuilds, never mixes vector spaces |
 | G3 stuck < 0.80 after 2 iterations | ship at best number with honest per-difficulty breakdown; judges reward measurement itself; pivot pitch to "hard-query analysis" |
 | Next.js rabbit hole | cut to Streamlit fallback (SPEC §0) — 1 file, 90 min, still shows breakdown bars + map |
 | Organizers release new/private queries at kickoff | they slot into eval.py as a new split; rerun tune.py; zero code changes |

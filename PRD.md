@@ -183,12 +183,20 @@ under time pressure; **P2** = stretch.
 - **FR-9 (P0) — Evaluation harness.** Recall@3/5, NDCG@5, MRR over the 60 labeled queries,
   reported overall and per-difficulty and per-query-category; stratified 40/20 tune/test
   split (fixed seed, committed); ablation runner (BM25 / dense / hybrid / +re-rank);
-  all outputs script-generated into `reports/`.
+  all outputs script-generated into `reports/`. **Because the test split is 20 queries (one
+  query ≈ 5 pts of Recall), every gate table reports a bootstrap confidence interval and the
+  per-cell n (Hard n≈8)** — the headline is "0.80 ±ε, Hard n=8", not a bare point estimate
+  (eng-review A3). Weight/provider selection is regularized (coarse grid, capped ascent, round-
+  weight tie-break) to limit over-fitting the 40 tune queries and protect private-eval transfer.
   *Acceptance:* metric math unit-tested against hand-computed fixtures; split file committed.
-- **FR-10 (P1) — Bedrock embeddings as primary provider** (`cohere.embed-multilingual-v3`
-  or Titan v2, chosen by measured tune NDCG), with local `BAAI/bge-m3` fallback selected by
-  env switch — this is the Built-with-AWS core component alongside FR-4.
-  *Acceptance:* provider comparison recorded in `reports/`; pipeline green with either provider.
+- **FR-10 (P1) — Local embeddings primary, Bedrock as a selectable measured provider**
+  (eng-review D1). `BAAI/bge-m3` is the default the build, tuning, and gates (G3) run against, so
+  the demo can't be killed by venue wifi. Bedrock (`cohere.embed-multilingual-v3` or Titan v2) is
+  an env-selectable provider whose numbers are recorded — the Built-with-AWS core component
+  alongside FR-4, without being the default the gates depend on. Both doc-embedding matrices are
+  provider-stamped and the cache key includes provider+model_id (no silent cross-provider mixing).
+  *Acceptance:* provider comparison recorded in `reports/`; pipeline green with either provider;
+  loader refuses a doc-matrix/provider mismatch.
 
 ### API
 
@@ -219,13 +227,20 @@ under time pressure; **P2** = stretch.
 
 ### Demo UI & submission surface
 
-- **FR-14 (P0) — Demo UI.** Single page: debounced search box; ranked result cards with
-  matched-attribute badges, per-signal score bars, and reason line; Leaflet map with
-  numbered pins + anchor marker; **keyword-vs-semantic side-by-side toggle** (BM25-only vs
-  full pipeline) — the demo centerpiece. Vietnamese labels, diacritics rendered correctly,
-  legible at 1080p from 5 meters.
-- **FR-15 (P1) — Metrics page.** `/metrics` route rendering `reports/metrics.json` +
-  ablation table as presentation-ready visuals, so live metrics appear *inside the demo*.
+- **FR-14 (P0) — Demo UI (focused on the money shot; CEO review).** Single page: debounced
+  search box; ranked result cards with matched-attribute badges, per-signal score bars, and
+  reason line; Leaflet map with numbered pins + anchor marker; **keyword-vs-semantic side-by-side
+  toggle** (BM25-only vs full pipeline) — the demo centerpiece, which gets the most polish. Plus
+  three accepted demo touches (CEO review, SELECTIVE EXPANSION): **one-tap query chips** for the
+  ~8 canonical scenarios (removes live Vietnamese-typing risk on stage), **animated re-rank** on
+  toggle (the ranking change is felt, not read), a **live latency badge** from response `meta`
+  (makes the speed claim visible), and **matched-term highlighting** on each card (matched
+  required/soft attributes emphasized so the query→result link is instant, using data already in
+  the breakdown). Vietnamese labels, diacritics rendered correctly, legible at 1080p from 5 meters.
+- **FR-15 (P2 — cut-first; CEO review).** Metrics page: `/metrics` route rendering
+  `reports/metrics.json` + ablation table as presentation-ready visuals. Downgraded from P1 — the
+  deck already carries the metrics, so this route is not worth night-of hours against the demo
+  money shot; build only if UI time remains.
 - **FR-16 (P1) — Client adapter.** Dart/REST adapter example mapping `PlaceResult` →
   Tasco's `SearchSuggestion` (id→id, label/name→label, category/type→meta,
   address→description, coordinates→coordinates), per the PDF's mapping table.
@@ -235,8 +250,11 @@ under time pressure; **P2** = stretch.
 ## 5. Non-Functional Requirements
 
 - **NFR-1 (P0) — Latency.** Warm p95 < 200 ms over the 60 eval queries on the demo machine
-  (no-LLM path); first-seen query with LLM parse < 1 s. Measured by a benchmark script,
-  numbers included in submission notes.
+  (no-LLM path); first-seen query with LLM parse < 1 s. **The warm number assumes a cached query
+  embedding; a novel query pays a cold bge-m3 forward pass (~100–300 ms), so the benchmark reports
+  cold p95 and warm p95 separately (eng-review P1), and the embedding model loads at server startup
+  with the query cache pre-warmed for eval + rehearsed demo queries.** Numbers included in
+  submission notes.
 - **NFR-2 (P0) — Robustness.** Every eval query **plus** adversarial inputs (empty string,
   emoji, all-caps no-diacritics, 200-char rambling text, pure-English query, pure address,
   coordinate-only query, unknown city) returns HTTP 200 with ≥1 result (or a contract-valid error for truly invalid
