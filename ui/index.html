@@ -141,7 +141,7 @@
   .sigrow{display:grid; grid-template-columns:74px 1fr 34px; align-items:center; gap:10px}
   .siglab{font-size:12px; color:var(--ink-dim)}
   .sigtrack{height:7px; background:#edefe9; border-radius:var(--radius-pill); overflow:hidden}
-  .sigfill{height:100%; border-radius:var(--radius-pill)}
+  .sigfill{display:block; height:100%; border-radius:var(--radius-pill); transition:width .25s ease}
   .sigval{font-size:11.5px; color:var(--ink-mute); text-align:right; font-variant-numeric:tabular-nums}
 
   /* keyword (compare) card — deliberately plainer, to contrast with the AI column */
@@ -382,7 +382,14 @@ function renderMap(results, anchor){
 function liftPin(id,on){ const mk=markers[id]; if(mk&&mk._icon){ mk._icon.firstChild.classList.toggle('lift',on); } }
 
 /* ---------- selection sync (need → place → why) ---------- */
+function deselect(){
+  state.selected=null;
+  $$('.card').forEach(c=>c.classList.remove('sel'));
+  Object.values(markers).forEach(mk=>{ if(mk&&mk._icon) mk._icon.firstChild.classList.remove('sel'); });
+  if(map) map.closePopup();
+}
 function selectResult(id,{fromMap=false}={}){
+  if(state.selected===id){ deselect(); return; }   // click the selected result again -> unhighlight
   state.selected=id;
   $$('.card').forEach(c=>c.classList.toggle('sel', c.dataset.id===id));
   Object.keys(markers).forEach(k=>{ const mk=markers[k]; if(mk&&mk._icon) mk._icon.firstChild.classList.toggle('sel', k===id); });
