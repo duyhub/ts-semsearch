@@ -27,7 +27,7 @@ from .data import POI, load_pois
 from .explain import generate_reasons
 from .geo import haversine
 from .pipeline import FullPipeline
-from .rank import DEFAULT_EVAL_NOW
+from .rank import DEFAULT_EVAL_NOW, load_weights
 
 ERROR_CODES = {  # SPEC §9 error-code table
     400: "invalid_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
@@ -121,7 +121,11 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
                prewarm: bool = True) -> FastAPI:
     app = FastAPI(title="Tasco Semantic Search & Ranking", version="0.1.0")
-    pipeline = FullPipeline(pois if pois is not None else load_pois(), now=now)
+    # Serve the TUNED weights (weights.json), so the live API matches the reported
+    # metrics instead of falling back to untuned DEFAULT_WEIGHTS.
+    pipeline = FullPipeline(pois if pois is not None else load_pois(),
+                            weights=load_weights(), now=now)
+    app.state.pipeline = pipeline
     if prewarm:  # P1: warm the embedding model at boot so the first live query is snappy.
         # Neutral warmup string (NOT an eval query — keeps eval text out of src, NFR-6).
         pipeline.rank_ids("khởi động hệ thống tìm kiếm")

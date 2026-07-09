@@ -16,7 +16,7 @@ from typing import Iterable, Sequence
 # Query-side only; documents are already canonical. Seeded from SPEC §3 + the
 # dataset's cities/categories; extend from eval failures.
 ABBREVIATIONS: dict[str, str] = {
-    "hcm": "tp hcm", "sg": "tp hcm", "tphcm": "tp hcm", "hcmc": "tp hcm",
+    "hcm": "tp hcm", "sg": "tp hcm", "tphcm": "tp hcm", "hcmc": "tp hcm", "sai gon": "tp hcm",
     "hn": "ha noi", "dn": "da nang", "dl": "da lat",
     "cf": "ca phe", "cafe": "ca phe", "cofe": "ca phe", "coffee": "ca phe", "quan cf": "quan ca phe",
     "ks": "khach san", "hotel": "khach san",
@@ -27,6 +27,38 @@ ABBREVIATIONS: dict[str, str] = {
 }
 
 _Q_RE = re.compile(r"^q(\d{1,2})$")  # q1..q12 -> "quan N"
+
+# Folded connectives + generic quality adjectives + generic place words. Used to
+# strip filler when detecting whether a query is "fully explained" (SPEC §6 hard
+# filters). MUST NOT contain category/subject nouns (bún, chả, mua, sắm, ...) — a
+# leftover subject noun is exactly what blocks a category hard-filter (guards P019/P055).
+STOPWORDS: frozenset[str] = frozenset({
+    # connectives / prepositions / determiners
+    "o", "cho", "co", "cua", "va", "voi", "de", "tai", "gan", "day", "nay", "do",
+    "ra", "vao", "len", "xuong", "khu", "vuc", "khong", "qua", "cung", "hay", "hoac",
+    "mot", "cac", "nhung", "vai", "moi",
+    # generic place / intent words
+    "noi", "cho", "dia", "diem", "quan", "tim", "kiem", "muon", "can", "gi", "nao",
+    "phu", "hop", "the",
+    # generic quality adjectives
+    "ngon", "dep", "re", "tot", "sang", "chanh", "xin", "cu", "lon", "nho", "rong",
+    "rai", "sach", "se", "gia", "noi tieng", "tieng",
+    # generic descriptors (incl. common English) that can appear in POI names but are
+    # not subjects: view/city/scenery, dining verbs, time words
+    "view", "thanh", "an", "uong", "mon", "gio",
+})
+
+
+def contains_token_seq(haystack_folded: str, key_folded: str) -> bool:
+    """True iff `key_folded` appears as a contiguous token subsequence of
+    `haystack_folded` (both already folded). Token-boundary match, so the district
+    key "quan 1" does NOT match inside "quan 10"/"quan 12" (the substring collision)."""
+    ht = haystack_folded.split()
+    kt = key_folded.split()
+    m = len(kt)
+    if m == 0:
+        return False
+    return any(ht[i:i + m] == kt for i in range(len(ht) - m + 1))
 
 
 def fold(s: str) -> str:

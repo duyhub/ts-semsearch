@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
-from .data import POI, QueryIntent, RankedResult
+from .data import POI, QueryIntent, RankedResult, content_tokens
 from .embeddings import get_embedder
 from .explain import generate_reasons
 from .geo import Gazetteer, haversine
@@ -54,11 +54,16 @@ class FullPipeline:
         self.ranker = LinearRanker(weights or DEFAULT_WEIGHTS, now or DEFAULT_EVAL_NOW, C)
         self._attrs = {p.poi_id: _attrs_folded(p) for p in self.pois}
         self._review = {p.poi_id: _review_tokens(p) for p in self.pois}
+        self._content = {p.poi_id: content_tokens(p) for p in self.pois}  # subject-filter tokens
 
-    def _relevance(self, query_text: str) -> dict[str, float]:
+    def _relevance(self, query_text: str, intent: QueryIntent) -> dict[str, float]:
         """Hybrid RRF relevance per POI, calibrated to [0,1] by a FIXED max (OV6:
-        not per-query min-max)."""
-        bm25_ids = self.bm25.rank_ids(query_text)
+        not per-query min-max). A lifted district reference is stripped from the
+        BM25 query (quán/quận de-pollution) — location is carried by the distance
+        signal, not lexical token overlap. The dense side keeps the full query
+        (embeddings don't token-double-count)."""
+        drop = set(fold(intent.district).split()) if intent.district else None
+        bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
         dense_ids = [pid for pid, _ in self.dense.search(query_text)]
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
@@ -66,7 +71,7 @@ class FullPipeline:
     def rank_scored(self, query_text: str) -> list[tuple[str, float, dict[str, float]]]:
         """Full-corpus ranking with per-signal breakdowns (used by the API/explanations)."""
         intent = self.parser.parse(query_text)
-        rel = self._relevance(query_text)
+        rel = self._relevance(query_text, intent)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
             s, b = self.ranker.score(
@@ -74,9 +79,36 @@ class FullPipeline:
             )
             out.append((p.poi_id, s, b))
         out.sort(key=lambda t: t[1], reverse=True)
+        out = self._constraint_filter(out, intent)
         if intent.anchor is not None:
             out = self._anchor_gate(out, intent)
         return out
+
+    def _constraint_filter(self, ranked, intent):
+        """Hard-filter to satisfy the query's expressed constraints (SPEC §6):
+        location (district/city), subject (distinctive content terms), or category
+        (only when the parse is fully explained — `has_residual` is False, which
+        guards mis-parses like P019/P055). Returns MATCHES ONLY (may be fewer than
+        the limit); relaxes the most-specific constraint first until non-empty (G5)."""
+        filters = []
+        if intent.district or intent.city:
+            d, c = intent.district, intent.city
+            filters.append(lambda pid: (d is None or self.by_id[pid].district == d)
+                           and (c is None or self.by_id[pid].city == c))
+        if intent.content_terms:
+            terms = set(intent.content_terms)
+            filters.append(lambda pid: terms <= self._content[pid])
+        elif intent.category and not intent.has_residual:
+            cat = intent.category
+            filters.append(lambda pid: self.by_id[pid].category == cat)
+
+        active = filters
+        while active:
+            keep = [t for t in ranked if all(f(t[0]) for f in active)]
+            if keep:
+                return keep
+            active = active[:-1]  # relax subject/category first, then location
+        return ranked
 
     def _anchor_gate(self, ranked, intent):
         """Float near-anchor POIs to the top; far ones become the tail. Relax the

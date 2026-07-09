@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .normalize import fold
+
 # Column name deltas between the xlsx and our dataclass (SPEC §2 Phase-0 note).
 _POI_RENAME = {
     "poi_name": "name",
@@ -71,6 +73,8 @@ class QueryIntent:
     price_max: int | None = None
     city: str | None = None
     district: str | None = None
+    content_terms: list[str] = field(default_factory=list)  # distinctive leftover terms -> subject filter
+    has_residual: bool = False  # any leftover content token -> category hard-filter ineligible
 
 
 @dataclass
@@ -93,6 +97,15 @@ class EvalQuery:
     semantic_requirements: list[str] = field(default_factory=list)
     ranking_signals: list[str] = field(default_factory=list)
     skills_tested: list[str] = field(default_factory=list)
+
+
+def content_tokens(poi: POI) -> set[str]:
+    """Folded token set of a POI's *name + brand*. Used for the subject hard-filter
+    (SPEC §6) and its corpus document-frequency. Deliberately narrow — a distinctive
+    term must NAME the POI (e.g. "bún chả" in "Bún Chả Hương Liên"), not merely appear
+    in its tags or free-text description; otherwise rare descriptors/amenities/verbs
+    ("tối", "học", "pool", "ngoài trời", "món") would wrongly filter out valid results."""
+    return {t for t in fold(f"{poi.name} {poi.brand or ''}").split() if t}
 
 
 def _split(value: object, sep: str) -> list[str]:

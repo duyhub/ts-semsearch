@@ -32,3 +32,9 @@ def test_resolve_district_centroid(gaz):
 
 def test_resolve_none_for_unknown(gaz):
     assert gaz.resolve("noi nao do khong ten") is None
+
+
+def test_district_centroid_key_exists_for_quan_1(gaz):
+    # Fix B relies on the gazetteer holding a folded "quan 1" district centroid
+    # so an expanded "q1" -> "quan 1" resolves to it.
+    assert "quan 1" in gaz.districts
