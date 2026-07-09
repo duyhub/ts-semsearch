@@ -67,6 +67,32 @@ def test_p055_mall_not_banished_by_category(pipe):
     assert all(r.poi.district == "Quận 1" for r in results)  # location constraint honored
 
 
+def test_superlative_does_not_hijack_to_proper_name(pipe):
+    # "quan an ngon nhat" (best restaurant): 'nhất' is rare in POI names (only in
+    # "Công viên Thống Nhất"), so BM25 ranks that park #1 and the old subject filter
+    # pinned results to it. Dense ranks the park ~45th, so corroboration drops the
+    # spurious subject and the category (Nhà hàng) drives the lineup.
+    _, results = pipe.search("quan an ngon nhat", k=5)
+    assert results
+    assert results[0].poi.category == "Nhà hàng"
+    assert all(r.poi.category == "Nhà hàng" for r in results)
+
+
+def test_superlative_on_other_category_not_hijacked(pipe):
+    # Same spurious-'nhất' collision, different category: gas stations, not the park.
+    _, results = pipe.search("cay xang gan nhat", k=5)
+    assert results
+    assert all(r.poi.category == "Trạm xăng" for r in results)
+
+
+def test_genuine_proper_name_query_still_returns_it(pipe):
+    # The corroboration gate must NOT harm a real proper-name search: when the user
+    # actually wants "Thống Nhất", dense ranks the park top, so it still comes first.
+    _, results = pipe.search("công viên thống nhất", k=5)
+    assert results
+    assert results[0].poi.name == "Công viên Thống Nhất"
+
+
 def test_impossible_strict_query_still_nonempty(pipe):
     # a district that doesn't exist -> relaxation keeps the result non-empty (G5).
     assert pipe.rank_ids("cafe quận 99 nowhere")
