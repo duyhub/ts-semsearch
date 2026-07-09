@@ -32,6 +32,15 @@ from .retrieve import BM25Index, DenseIndex, rrf_fuse
 RRF_C = 60
 RRF_MAX = 2.0 / (RRF_C + 1)  # best possible fused score (rank 1 in both lists)
 
+# A parser "distinctive subject" term (rare in POI names, df<=2) may hard-filter the
+# results ONLY if the DENSE retriever corroborates it — a POI matching the term sits
+# in the dense top-K. BM25 ranks a coincidental high-IDF proper-name token (e.g. "nhat"
+# in "Thống Nhất") at #1, but dense understands the query and ranks it far down; this
+# gate drops those spurious subjects. Structural constant (top ~9% of 111), NOT tuned
+# on eval: genuine subjects sit at dense rank 1 vs spurious 45+, so any K in [5,30] is
+# equivalent. See docs/superpowers/specs/2026-07-10-subject-filter-corroboration-design.md.
+DENSE_SUBJECT_TOPK = 10
+
 
 def _attrs_folded(p: POI) -> set[str]:
     return {fold(a) for a in p.attributes}
@@ -56,22 +65,24 @@ class FullPipeline:
         self._review = {p.poi_id: _review_tokens(p) for p in self.pois}
         self._content = {p.poi_id: content_tokens(p) for p in self.pois}  # subject-filter tokens
 
-    def _relevance(self, query_text: str, intent: QueryIntent) -> dict[str, float]:
+    def _relevance(self, query_text: str, intent: QueryIntent,
+                   dense_ids: list[str]) -> dict[str, float]:
         """Hybrid RRF relevance per POI, calibrated to [0,1] by a FIXED max (OV6:
         not per-query min-max). A lifted district reference is stripped from the
         BM25 query (quán/quận de-pollution) — location is carried by the distance
         signal, not lexical token overlap. The dense side keeps the full query
-        (embeddings don't token-double-count)."""
+        (embeddings don't token-double-count); `dense_ids` is precomputed once by
+        the caller so corroboration and fusion share the single dense pass."""
         drop = set(fold(intent.district).split()) if intent.district else None
         bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
-        dense_ids = [pid for pid, _ in self.dense.search(query_text)]
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
 
     def rank_scored(self, query_text: str) -> list[tuple[str, float, dict[str, float]]]:
         """Full-corpus ranking with per-signal breakdowns (used by the API/explanations)."""
         intent = self.parser.parse(query_text)
-        rel = self._relevance(query_text, intent)
+        dense_ids = [pid for pid, _ in self.dense.search(query_text)]  # one dense pass, reused below
+        rel = self._relevance(query_text, intent, dense_ids)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
             s, b = self.ranker.score(
@@ -79,26 +90,43 @@ class FullPipeline:
             )
             out.append((p.poi_id, s, b))
         out.sort(key=lambda t: t[1], reverse=True)
-        out = self._constraint_filter(out, intent)
+        out = self._constraint_filter(out, intent, dense_ids)
         if intent.anchor is not None:
             out = self._anchor_gate(out, intent)
         return out
 
-    def _constraint_filter(self, ranked, intent):
+    def _corroborated_subjects(self, intent: QueryIntent, dense_ids: list[str]) -> set[str]:
+        """Keep only the parser's distinctive `content_terms` that the DENSE retriever
+        corroborates as central to the query — some POI whose folded name/text contains
+        the term appears in the dense top-K. Filters out coincidental high-IDF proper-
+        name collisions (BM25 ranks them #1; dense does not)."""
+        dense_top = dense_ids[:DENSE_SUBJECT_TOPK]
+        return {t for t in intent.content_terms
+                if any(t in self._content[pid] for pid in dense_top)}
+
+    def _constraint_filter(self, ranked, intent, dense_ids):
         """Hard-filter to satisfy the query's expressed constraints (SPEC §6):
         location (district/city), subject (distinctive content terms), or category
-        (only when the parse is fully explained — `has_residual` is False, which
-        guards mis-parses like P019/P055). Returns MATCHES ONLY (may be fewer than
-        the limit); relaxes the most-specific constraint first until non-empty (G5)."""
+        (only when the parse is fully explained). Returns MATCHES ONLY (may be fewer
+        than the limit); relaxes the most-specific constraint first until non-empty (G5).
+
+        The subject filter fires only for DENSE-corroborated terms; a distinctive term
+        the dense retriever discredits (a coincidental proper-name collision like "nhat"
+        in "Thống Nhất") is dropped, and — since it never described a real subject — it
+        no longer blocks the category filter either. Genuine unexplained content (e.g.
+        P055's "mua/sắm") still blocks category, preserving the mis-parse guard."""
+        subject_terms = self._corroborated_subjects(intent, dense_ids)
+        discredited = set(intent.content_terms) - subject_terms  # spurious distinctive terms
+        meaningful_residual = [t for t in intent.residual_terms if t not in discredited]
+
         filters = []
         if intent.district or intent.city:
             d, c = intent.district, intent.city
             filters.append(lambda pid: (d is None or self.by_id[pid].district == d)
                            and (c is None or self.by_id[pid].city == c))
-        if intent.content_terms:
-            terms = set(intent.content_terms)
-            filters.append(lambda pid: terms <= self._content[pid])
-        elif intent.category and not intent.has_residual:
+        if subject_terms:
+            filters.append(lambda pid: subject_terms <= self._content[pid])
+        elif intent.category and not meaningful_residual:
             cat = intent.category
             filters.append(lambda pid: self.by_id[pid].category == cat)
 

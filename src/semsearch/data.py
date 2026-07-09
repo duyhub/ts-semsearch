@@ -75,6 +75,8 @@ class QueryIntent:
     district: str | None = None
     content_terms: list[str] = field(default_factory=list)  # distinctive leftover terms -> subject filter
     has_residual: bool = False  # any leftover content token -> category hard-filter ineligible
+    residual_terms: list[str] = field(default_factory=list)  # ALL leftover terms (>= content_terms);
+    # lets the pipeline tell a discredited subject from genuine unexplained content
 
 
 @dataclass

@@ -133,4 +133,5 @@ class Parser:
             district=district,
             content_terms=content_terms,
             has_residual=bool(residual),
+            residual_terms=residual,
         )
