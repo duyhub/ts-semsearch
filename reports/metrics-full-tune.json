@@ -1,0 +1,379 @@
+{
+  "engine": "full",
+  "split": "tune",
+  "n": 40,
+  "overall": {
+    "recall@3": 0.8333333333333333,
+    "recall@5": 0.8791666666666667,
+    "ndcg@5": 0.8744472700508943,
+    "mrr": 0.9131944444444444
+  },
+  "ci": {
+    "metric": "ndcg@5",
+    "lo": 0.7823205730092303,
+    "hi": 0.9533738177647746
+  },
+  "by_difficulty": {
+    "Hard": {
+      "n": 17,
+      "recall@3": 0.784313725490196,
+      "recall@5": 0.8039215686274509,
+      "ndcg@5": 0.8348515080216551,
+      "mrr": 0.8962418300653594
+    },
+    "Medium": {
+      "n": 20,
+      "recall@3": 0.85,
+      "recall@5": 0.925,
+      "ndcg@5": 0.8892707582833819,
+      "mrr": 0.9145833333333334
+    },
+    "Easy": {
+      "n": 3,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    }
+  },
+  "by_category": {
+    "Semantic Search": {
+      "n": 12,
+      "recall@3": 0.7638888888888888,
+      "recall@5": 0.875,
+      "ndcg@5": 0.8425694592344019,
+      "mrr": 0.8634259259259259
+    },
+    "Location-Aware Search": {
+      "n": 4,
+      "recall@3": 0.875,
+      "recall@5": 0.875,
+      "ndcg@5": 0.8673196815056892,
+      "mrr": 1.0
+    },
+    "Intent-Based Search": {
+      "n": 6,
+      "recall@3": 0.9444444444444443,
+      "recall@5": 0.9444444444444443,
+      "ndcg@5": 0.9680667657657621,
+      "mrr": 1.0
+    },
+    "Attribute Search": {
+      "n": 9,
+      "recall@3": 0.8333333333333334,
+      "recall@5": 0.8888888888888888,
+      "ndcg@5": 0.8761622090634985,
+      "mrr": 0.9027777777777778
+    },
+    "Discovery Search": {
+      "n": 3,
+      "recall@3": 0.6666666666666666,
+      "recall@5": 0.6666666666666666,
+      "ndcg@5": 0.6666666666666666,
+      "mrr": 0.6805555555555555
+    },
+    "Category Search": {
+      "n": 2,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    "POI Search": {
+      "n": 1,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    "Mixed Language Search": {
+      "n": 3,
+      "recall@3": 0.8333333333333334,
+      "recall@5": 0.8333333333333334,
+      "ndcg@5": 0.9013060296780449,
+      "mrr": 1.0
+    }
+  },
+  "per_query": [
+    {
+      "query_id": "P001",
+      "recall@3": 0.6666666666666666,
+      "recall@5": 1.0,
+      "ndcg@5": 0.9762388637052952,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P002",
+      "recall@3": 0.5,
+      "recall@5": 0.5,
+      "ndcg@5": 0.46927872602275644,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P003",
+      "recall@3": 0.6666666666666666,
+      "recall@5": 0.6666666666666666,
+      "ndcg@5": 0.894999002123018,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P006",
+      "recall@3": 0.5,
+      "recall@5": 1.0,
+      "ndcg@5": 0.8854598815714874,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P007",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P008",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P009",
+      "recall@3": 0.0,
+      "recall@5": 0.0,
+      "ndcg@5": 0.0,
+      "mrr": 0.125
+    },
+    {
+      "query_id": "P010",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P011",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P012",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P013",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P015",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P016",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P018",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P019",
+      "recall@3": 0.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.4306765580733931,
+      "mrr": 0.25
+    },
+    {
+      "query_id": "P020",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P021",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P025",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P026",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P027",
+      "recall@3": 0.0,
+      "recall@5": 0.0,
+      "ndcg@5": 0.0,
+      "mrr": 0.1111111111111111
+    },
+    {
+      "query_id": "P028",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P029",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P030",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P031",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P033",
+      "recall@3": 0.5,
+      "recall@5": 0.5,
+      "ndcg@5": 0.7039180890341347,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P035",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P036",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P037",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P040",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P041",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P042",
+      "recall@3": 0.5,
+      "recall@5": 0.5,
+      "ndcg@5": 0.7039180890341347,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P045",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 0.9134015924715543,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P047",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P049",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P051",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P053",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P054",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P055",
+      "recall@3": 0.0,
+      "recall@5": 0.0,
+      "ndcg@5": 0.0,
+      "mrr": 0.041666666666666664
+    },
+    {
+      "query_id": "P056",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    },
+    {
+      "query_id": "P057",
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@5": 1.0,
+      "mrr": 1.0
+    }
+  ]
+}
