@@ -5,6 +5,24 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/": {
+      "get": {
+        "summary": "Index",
+        "operationId": "index__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -140,6 +158,16 @@
               "type": "string",
               "default": "vi",
               "title": "Lang"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
             }
           },
           {
@@ -305,6 +333,16 @@
             }
           },
           {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
+            }
+          },
+          {
             "name": "x-request-id",
             "in": "header",
             "required": false,
@@ -464,6 +502,16 @@
               "type": "string",
               "default": "vi",
               "title": "Lang"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
             }
           },
           {

@@ -19,9 +19,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-UI_INDEX = Path(__file__).resolve().parents[2] / "ui" / "index.html"
+UI_DIR = Path(__file__).resolve().parents[2] / "ui"
+UI_INDEX = UI_DIR / "index.html"
 
 from .data import POI, load_pois
 from .explain import generate_reasons
@@ -121,6 +123,8 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
                prewarm: bool = True) -> FastAPI:
     app = FastAPI(title="Tasco Semantic Search & Ranking", version="0.1.0")
+    if UI_DIR.exists():  # serve vendored assets (Leaflet js/css) offline-safe at /ui/*
+        app.mount("/ui", StaticFiles(directory=str(UI_DIR)), name="ui")
     # Serve the TUNED weights (weights.json), so the live API matches the reported
     # metrics instead of falling back to untuned DEFAULT_WEIGHTS.
     pipeline = FullPipeline(pois if pois is not None else load_pois(),

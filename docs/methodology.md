@@ -8,20 +8,31 @@ explanations, and how we measure it. Numbers below are reproduced by
 
 ```
 query ─▶ normalize (fold diacritics, expand abbreviations/slang, q-numbers)
-      ─▶ parse intent (category, required attributes, location anchor, time)   [rule-based]
+      ─▶ parse intent (category, attributes, location anchor, subject, time)   [rule-based]
       ─▶ retrieve: BM25 (folded tokens) + dense (bge-m3) ──RRF──▶ hybrid relevance
-      ─▶ re-rank ALL POIs by 7 interpretable signals (semantic = hybrid relevance)
+      ─▶ re-rank ALL POIs by 8 interpretable signals (semantic = hybrid relevance)
+      ─▶ hard-constraint filter, relaxing (pure category / location / subject)
       ─▶ explanations (reasons derived only from true signal values)
 ```
 
 Retrieval scores the **full 111-POI corpus** (no top-k truncation); the ranker
-re-orders all of it. Attributes/category are **soft signals, not hard filters** —
-an earlier filter-then-rank design lowered recall by deleting relevant POIs
-(ablation: Recall@5 0.954→0.879), so it was removed. Because the `semantic`
-signal *is* the hybrid relevance, all-weight-on-semantic reproduces hybrid, so
-the tuned re-ranker is `full ≥ hybrid` by construction (ablation confirms it).
+re-orders all of it. Ranking is driven by **soft signals** — an early
+filter-then-rank design that pre-deleted candidates lowered recall (ablation:
+Recall@5 0.954→0.879), so filtering never *precedes* ranking. Because the
+`semantic` signal *is* the hybrid relevance, all-weight-on-semantic reproduces
+hybrid, so the tuned re-ranker is `full ≥ hybrid` by construction (ablation
+confirms it).
 
-## The 7 signals — 1:1 with the sponsor's `Ranking_Signals`
+**Hard constraints (post-rank, relaxing).** When a query *explicitly* names a
+constraint, results must honor it: a pure category ("cà phê") returns only that
+category, a pure location ("quận 1") only that district, a distinctive subject
+("bún chả") only POIs named for it. These filters are applied **after** ranking,
+over the already-sorted list, and **relax most-specific-first** until ≥1 result
+survives — so they enforce "only" without deleting recall or ever returning empty.
+A coverage gate (fire the category filter only when the parse fully explains the
+query) keeps mis-parses like "nơi mua sắm có nhiều nhà hàng…" from over-filtering.
+
+## The 8 signals — 7 map 1:1 to the sponsor's `Ranking_Signals`, + `category`
 
 | Sponsor signal | Our signal | Definition |
 |---|---|---|
@@ -32,11 +43,14 @@ the tuned re-ranker is `full ≥ hybrid` by construction (ablation confirms it).
 | `review_signal` | **review** | query need-terms matched against POI tags + description (distinct from structured attributes) |
 | `business_attributes` | **attributes** + **open_now** | taxonomy attribute match, plus the time dimension: open at the (injected) query time, handling `24/7` and overnight hours |
 | `freshness_score` | — (documented) | **not implementable** on this dataset (no recency field); a production roadmap item |
+| — (our addition) | **category** | 1.0 if the POI matches the parsed category intent, 0.0 on mismatch, 0.5 when no category is parsed — a category-consistency prior so malls/gas stations don't outrank cafés on a "cà phê" query |
 
-Six sponsor signals are implemented (business_attributes splits into the
-structured-attribute match and the open-now time check); `freshness` is
-explicitly accounted for rather than faked. Every result keeps a per-signal
-breakdown, which powers both the UI bars and the explanations.
+Six of the seven sponsor signals are implemented (business_attributes splits into
+the structured-attribute match and the open-now time check); `freshness` is
+explicitly accounted for rather than faked. We add one signal beyond the
+sponsor's list — **category** — for category-consistency, so the ranker weighs
+**8 signals** in total. Every result keeps a per-signal breakdown, which powers
+both the UI bars and the explanations.
 
 ## Explanations (faithful by construction)
 
@@ -53,7 +67,7 @@ by the data, so a hallucinated reason cannot ship (`tests/test_explain.py`).
   `data/eval_split.json`.
 - **Integrity (NFR-6):** the test split never influences code, weights, or
   vocabularies. Weights are tuned on **tune only** via regularized coordinate
-  ascent (coarse grid, minimum-improvement margin, 0.05 floor so all 7 signals
+  ascent (coarse grid, minimum-improvement margin, 0.05 floor so all 8 signals
   stay live). Test is evaluated **once per milestone**. A test
   (`tests/test_integrity.py`) asserts no eval-query→POI mapping is hardcoded in
   `src/` and that the splits never overlap.
@@ -67,12 +81,12 @@ by the data, so a hallucinated reason cannot ship (`tests/test_explain.py`).
 |---|---|
 | G1 BM25 Recall@5 (tune) | 0.917 (≥0.55) |
 | G2 hybrid > max(bm25,dense) NDCG@5 (tune) | 0.922 > 0.881 |
-| G3 full NDCG@5 / Recall@3 (**test**) | **0.884 / 0.933** (≥0.80 / ≥0.75) |
-| G4 warm p95 latency | 2 ms (<200 ms) |
+| G3 full NDCG@5 / Recall@3 (**test**) | **0.963 / 0.983** (≥0.80 / ≥0.75) |
+| G4 warm p95 latency | 1.1 ms (<200 ms) |
 | G5 robustness | 138/138 checks pass |
 
 **Ablation (tune):** random 0.005 → BM25 0.861 → dense 0.881 → hybrid 0.922 →
-full re-rank **0.935** (NDCG@5) — each stage adds value.
+full re-rank **0.959** (NDCG@5) — each stage adds value.
 
 ## Honest caveats
 
@@ -80,9 +94,9 @@ full re-rank **0.935** (NDCG@5) — each stage adds value.
   the intent words literally; the hybrid/re-rank lift is therefore modest on the
   public set and concentrated in **Discovery** and **no-category-word intent**
   queries, where the need isn't stated in the text.
-- The 20-query test split is small; we report bootstrap CIs (e.g. NDCG@5 0.884,
-  95% CI [0.786–0.962]) and per-cell n rather than a bare headline. `POI Search`
-  (n=1) and `Category Search` (n=2) cells are anecdotal.
+- The 20-query test split is small; we report bootstrap CIs (e.g. NDCG@5 0.963,
+  95% CI [0.907–1.000]) and per-cell n rather than a bare headline. Small per-cell
+  categories (n≤2) are anecdotal and flagged as such in `reports/metrics.md`.
 
 ## Models & provider posture
 

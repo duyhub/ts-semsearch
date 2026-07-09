@@ -8,6 +8,8 @@
      the real /v1/search (keyword lane) and /v1/semantic-search (full pipeline).
      Production stack per SPEC is Next.js; this lean SPA delivers the same
      money-shot screen without a build step (Phase-7 decision). -->
+<link rel="stylesheet" href="/ui/vendor/leaflet.css" />
+<script src="/ui/vendor/leaflet.js"></script>
 <style>
   :root{
     --signal-semantic:#3b9ae1; --signal-attributes:#e69f00; --signal-distance:#22b07d;
@@ -57,9 +59,22 @@
   details.full{margin-top:10px;border-top:1px dashed var(--line);padding-top:9px}
   details.full summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;list-style:none}
   details.full summary::-webkit-details-marker{display:none}
-  .mappanel{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:13px 16px;display:none}
-  .mappanel.open{display:block}
-  .mappanel .t{font-weight:700}.mappanel .hint{font-size:13px;color:var(--ink-dim);margin-left:8px}
+  .mapwrap{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:13px 16px}
+  .mapwrap .maphdr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 2px 12px}
+  .mapwrap .t{font-weight:700}.mapwrap .hint,.mapwrap #mapNote{font-size:13px;color:var(--ink-dim)}
+  #mapCanvas{height:360px;border-radius:10px;overflow:hidden;background:var(--panel-2);z-index:0}
+  /* numbered result pins (DivIcon — no image deps, renders even if tiles are offline) */
+  .pin{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#04121f;font-weight:800;
+    font-size:15px;display:grid;place-items:center;border:2px solid #eaf4fc;box-shadow:0 2px 8px rgba(0,0,0,.55)}
+  .pin-anchor{background:var(--good);color:#04120c;border-color:#dff5ec}
+  /* dark-theme Leaflet overrides so the map matches the UI (and looks intentional offline) */
+  .leaflet-container{background:var(--panel-2);font-family:inherit}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--panel-2);color:var(--ink);border:1px solid var(--line)}
+  .leaflet-popup-content{font-size:13px;line-height:1.45;margin:9px 12px}
+  .leaflet-bar a{background:var(--panel-2);color:var(--ink);border-bottom-color:var(--line)}
+  .leaflet-bar a:hover{background:var(--panel)}
+  .leaflet-control-attribution{background:rgba(23,27,34,.7)!important;color:var(--ink-dim)}
+  .leaflet-control-attribution a{color:var(--accent)}
   .empty{color:var(--ink-dim);font-size:15px;padding:8px 4px}
   .hintbar{margin-top:20px;text-align:center;color:var(--ink-dim);font-size:13px}
 </style>
@@ -86,7 +101,14 @@
   <section class="col semantic"><div class="col-head"><span class="tag">Semantic · AI</span><span class="sub" id="semsub">hiểu ý định</span></div><div class="list" id="semList"></div></section>
 </div>
 
-<div class="mappanel" id="map"><span class="t">Bản đồ</span><span class="hint" id="mapHint"></span></div>
+<section class="mapwrap" id="map">
+  <div class="maphdr">
+    <span class="t">Bản đồ kết quả</span>
+    <span class="hint">ghim đánh số = kết quả semantic · ★ = điểm neo</span>
+    <span id="mapNote"></span>
+  </div>
+  <div id="mapCanvas"></div>
+</section>
 
 <div class="hintbar">Dữ liệu trực tiếp từ <code>/v1/search</code> &amp; <code>/v1/semantic-search</code> · bấm chip hoặc gõ truy vấn</div>
 
@@ -99,7 +121,7 @@ const CHIPS = [
   "khách sạn gần biển Đà Nẵng",
   "quan cafe yen tinh gan q1",
 ];
-const SIG_LABEL = {semantic:"Ngữ nghĩa",attributes:"Thuộc tính",distance:"Khoảng cách",rating:"Đánh giá",popularity:"Phổ biến",open_now:"Đang mở",review:"Tags/mô tả"};
+const SIG_LABEL = {semantic:"Ngữ nghĩa",attributes:"Thuộc tính",category:"Danh mục",distance:"Khoảng cách",rating:"Đánh giá",popularity:"Phổ biến",open_now:"Đang mở",review:"Tags/mô tả"};
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
@@ -125,8 +147,43 @@ function semCard(r,i){
     `<div class="reasons">${reasons}</div>`+
     `<div class="composite">Điểm ${r.score.toFixed(3)}</div>`+
     `<div class="bars">${top.map(([k,v])=>bar(k,v)).join('')}</div>`+
-    (rest.length?`<details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary><div class="bars">${rest.map(([k,v])=>bar(k,v)).join('')}</div></details>`:'')+
+    (rest.length?`<details class="full"><summary>▾ Xem đủ 8 tín hiệu</summary><div class="bars">${rest.map(([k,v])=>bar(k,v)).join('')}</div></details>`:'')+
     `</div>`;
+}
+
+// ---- Leaflet result map (vendored locally; DivIcon pins, no image deps) ------
+let _map=null, _markers=[], _tileWarned=false;
+function ensureMap(){
+  if(_map) return _map;
+  _map = L.map('mapCanvas',{scrollWheelZoom:true}).setView([16.0,107.9],5); // Vietnam
+  const tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    {maxZoom:19, subdomains:'abcd', attribution:'© OpenStreetMap · © CARTO'});
+  tiles.on('tileerror',()=>{ if(!_tileWarned){_tileWarned=true; $("#mapNote").textContent='· nền bản đồ ngoại tuyến';} });
+  tiles.addTo(_map);
+  return _map;
+}
+function pinIcon(n, anchor){
+  return L.divIcon({className:'', iconSize:[28,28], iconAnchor:[14,14],
+    html:`<div class="pin${anchor?' pin-anchor':''}">${anchor?'★':n}</div>`});
+}
+function updateMap(results, anchor){
+  const map = ensureMap();
+  _markers.forEach(m=>map.removeLayer(m)); _markers=[];
+  const pts=[];
+  results.forEach((r,i)=>{
+    const c=r.coordinates; if(!c) return;
+    const m=L.marker([c.lat,c.lon],{icon:pinIcon(i+1,false)}).addTo(map)
+      .bindPopup(`<b>${esc(r.name)}</b><br>${esc(r.category)} · điểm ${r.score.toFixed(3)}`);
+    _markers.push(m); pts.push([c.lat,c.lon]);
+  });
+  if(anchor){
+    const m=L.marker([anchor.lat,anchor.lon],{icon:pinIcon(0,true),zIndexOffset:1000}).addTo(map)
+      .bindPopup(`điểm neo: <b>${esc(anchor.name)}</b>`);
+    _markers.push(m); pts.push([anchor.lat,anchor.lon]);
+    $("#mapNote").textContent=`· neo: ${anchor.name}`;
+  } else if(!_tileWarned){ $("#mapNote").textContent=''; }
+  if(pts.length) map.fitBounds(pts,{padding:[42,42], maxZoom:15});
+  setTimeout(()=>map.invalidateSize(),0);
 }
 
 async function run(query){
@@ -144,9 +201,7 @@ async function run(query){
     $("#semList").innerHTML = sem.results.map(semCard).join('');
     $("#lat").textContent = `${(sem.meta.tookMs).toFixed(0)} ms`;
     $("#semsub").textContent = sem.intent.requiredAttrs?.length ? `thuộc tính: ${sem.intent.requiredAttrs.join(', ')}` : 'hiểu ý định';
-    const map = $("#map"), a = sem.intent.anchor;
-    map.classList.toggle("open", !!a);
-    if(a) $("#mapHint").textContent = `neo: ${a.name} (${a.lat.toFixed(4)}, ${a.lon.toFixed(4)})`;
+    updateMap(sem.results, sem.intent.anchor);
   }catch(e){
     $("#semList").innerHTML = `<div class="empty">Lỗi máy chủ — thử lại</div>`;
   }
