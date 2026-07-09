@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tasco.tìm — Semantic search & ranking</title>
+<!-- Live demo UI (SPEC §10). Single origin: served by the FastAPI app; fetches
+     the real /v1/search (keyword lane) and /v1/semantic-search (full pipeline).
+     Production stack per SPEC is Next.js; this lean SPA delivers the same
+     money-shot screen without a build step (Phase-7 decision). -->
+<style>
+  :root{
+    --signal-semantic:#3b9ae1; --signal-attributes:#e69f00; --signal-distance:#22b07d;
+    --signal-rating:#cc79a7; --signal-popularity:#56b4e9; --signal-open_now:#f0d43a; --signal-review:#e0663a;
+    --bg:#0e1116; --panel:#171b22; --panel-2:#1e232c; --line:#2a313c;
+    --ink:#f2f5f8; --ink-dim:#9aa6b2; --accent:#3b9ae1; --good:#22b07d; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Be Vietnam Pro","Segoe UI",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:26px 32px 44px}
+  header.topbar{display:flex;align-items:center;gap:18px;margin-bottom:20px}
+  .brand{font-weight:800;font-size:26px;white-space:nowrap}.brand .dot{color:var(--accent)}
+  .brand small{display:block;font-weight:500;font-size:14px;color:var(--ink-dim)}
+  .searchwrap{flex:1}
+  .searchbar{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:13px 20px}
+  .searchbar input{flex:1;background:none;border:none;outline:none;color:var(--ink);font-family:inherit;font-size:20px;font-weight:500}
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+  .chip{background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim);padding:8px 14px;border-radius:999px;font-size:15px;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink);border-color:var(--accent)}.chip.active{background:rgba(59,154,225,.14);border-color:var(--accent);color:#cfe8fb}
+  .resulthdr{display:flex;align-items:center;justify-content:space-between;margin:22px 2px 14px;gap:16px}
+  .resulthdr .q{font-size:17px;color:var(--ink-dim)}.resulthdr .q b{color:var(--ink)}
+  .latency{display:inline-flex;align-items:center;gap:7px;background:rgba(34,176,125,.13);color:var(--good);border:1px solid rgba(34,176,125,.35);padding:6px 12px;border-radius:999px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .latency .pulse{width:7px;height:7px;border-radius:50%;background:var(--good)}
+  .columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;min-height:120px}
+  .col.semantic{border-color:rgba(59,154,225,.5);box-shadow:0 0 0 1px rgba(59,154,225,.22),0 14px 40px -24px rgba(59,154,225,.55)}
+  .col-head{display:flex;align-items:center;gap:10px;margin:2px 4px 14px}
+  .col-head .tag{font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:5px 10px;border-radius:8px}
+  .col.keyword .tag{background:#2a313c;color:var(--ink-dim)}.col.semantic .tag{background:var(--accent);color:#04121f}
+  .col-head .sub{font-size:14px;color:var(--ink-dim)}
+  .list{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 15px}
+  .card.dim{opacity:.62}
+  .card-top{display:flex;gap:12px;align-items:flex-start}
+  .rank{flex:none;width:30px;height:30px;border-radius:8px;background:#2a313c;color:var(--ink-dim);font-weight:800;font-size:16px;display:grid;place-items:center}
+  .col.semantic .rank{background:var(--accent);color:#04121f}
+  .name{font-size:21px;font-weight:700;line-height:1.15}
+  .meta{margin-top:3px;font-size:14px;color:var(--ink-dim)}
+  .reasons{margin:9px 0 6px;font-size:15px;color:#d7dee6;line-height:1.5}
+  .reasons .r0{color:#ffd479;font-weight:600}
+  .bars{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+  .bar-row{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px}
+  .bar-label{font-size:13px;color:var(--ink-dim)}.bar-track{height:9px;background:#2a313c;border-radius:999px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:999px}.bar-val{font-size:12px;color:var(--ink-dim);text-align:right;font-variant-numeric:tabular-nums}
+  .composite{font-weight:800;font-size:15px;margin-top:2px}
+  details.full{margin-top:10px;border-top:1px dashed var(--line);padding-top:9px}
+  details.full summary{cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;list-style:none}
+  details.full summary::-webkit-details-marker{display:none}
+  .mappanel{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:13px 16px;display:none}
+  .mappanel.open{display:block}
+  .mappanel .t{font-weight:700}.mappanel .hint{font-size:13px;color:var(--ink-dim);margin-left:8px}
+  .empty{color:var(--ink-dim);font-size:15px;padding:8px 4px}
+  .hintbar{margin-top:20px;text-align:center;color:var(--ink-dim);font-size:13px}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Tasco<span class="dot">.</span>tìm<small>Semantic search &amp; ranking</small></div>
+  <div class="searchwrap">
+    <div class="searchbar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9aa6b2" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input id="q" placeholder="Tìm theo nhu cầu… (vd. quán cà phê yên tĩnh để làm việc)" />
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+</header>
+
+<div class="resulthdr">
+  <div class="q">Kết quả cho <b id="qecho">…</b></div>
+  <div class="latency"><span class="pulse"></span><span id="lat">— ms</span></div>
+</div>
+
+<div class="columns">
+  <section class="col keyword"><div class="col-head"><span class="tag">Keyword · BM25</span><span class="sub">khớp từ khóa</span></div><div class="list" id="kwList"></div></section>
+  <section class="col semantic"><div class="col-head"><span class="tag">Semantic · AI</span><span class="sub" id="semsub">hiểu ý định</span></div><div class="list" id="semList"></div></section>
+</div>
+
+<div class="mappanel" id="map"><span class="t">Bản đồ</span><span class="hint" id="mapHint"></span></div>
+
+<div class="hintbar">Dữ liệu trực tiếp từ <code>/v1/search</code> &amp; <code>/v1/semantic-search</code> · bấm chip hoặc gõ truy vấn</div>
+
+<script>
+const CHIPS = [
+  "quán cà phê yên tĩnh để làm việc",
+  "cafe có wifi gần hồ gươm",
+  "nơi hẹn hò lãng mạn có view đẹp",
+  "cây xăng 24/7 gần đây",
+  "khách sạn gần biển Đà Nẵng",
+  "quan cafe yen tinh gan q1",
+];
+const SIG_LABEL = {semantic:"Ngữ nghĩa",attributes:"Thuộc tính",distance:"Khoảng cách",rating:"Đánh giá",popularity:"Phổ biến",open_now:"Đang mở",review:"Tags/mô tả"};
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function bar(key, val){
+  const pct = Math.round(val*100);
+  return `<div class="bar-row"><span class="bar-label">${SIG_LABEL[key]||key}</span>`+
+         `<span class="bar-track"><span class="bar-fill" style="width:${pct}%;background:var(--signal-${key})"></span></span>`+
+         `<span class="bar-val">${val>=1?'1.0':val.toFixed(2).slice(1)}</span></div>`;
+}
+function kwCard(r,i){
+  return `<div class="card dim"><div class="card-top"><div class="rank">${i+1}</div><div>`+
+    `<div class="name">${esc(r.name)}</div>`+
+    `<div class="meta">${esc(r.category)} · ${esc(r.label)}${r.distanceMeters!=null?` · ${r.distanceMeters} m`:''}</div>`+
+    `</div></div></div>`;
+}
+function semCard(r,i){
+  const b = r.breakdown || {};
+  const top = Object.entries(b).sort((a,c)=>c[1]-a[1]).slice(0,3);
+  const rest = Object.entries(b).sort((a,c)=>c[1]-a[1]).slice(3);
+  const reasons = (r.reasons||[]).map((t,j)=>`<div class="r${j}">${esc(t)}</div>`).join('');
+  return `<div class="card"><div class="card-top"><div class="rank">${i+1}</div><div>`+
+    `<div class="name">${esc(r.name)}</div><div class="meta">${esc(r.category)} · ${esc(r.label)}</div></div></div>`+
+    `<div class="reasons">${reasons}</div>`+
+    `<div class="composite">Điểm ${r.score.toFixed(3)}</div>`+
+    `<div class="bars">${top.map(([k,v])=>bar(k,v)).join('')}</div>`+
+    (rest.length?`<details class="full"><summary>▾ Xem đủ 7 tín hiệu</summary><div class="bars">${rest.map(([k,v])=>bar(k,v)).join('')}</div></details>`:'')+
+    `</div>`;
+}
+
+async function run(query){
+  const q = query ?? $("#q").value;
+  if(!q || !q.trim()) return;
+  $("#q").value = q; $("#qecho").textContent = `“${q}”`;
+  document.querySelectorAll(".chip").forEach(c=>c.classList.toggle("active", c.dataset.q===q));
+  $("#kwList").innerHTML = $("#semList").innerHTML = '<div class="empty">Đang tìm…</div>';
+  try{
+    const [kw, sem] = await Promise.all([
+      fetch(`/v1/search?q=${encodeURIComponent(q)}&engine=keyword&limit=5`).then(r=>r.json()),
+      fetch(`/v1/semantic-search?q=${encodeURIComponent(q)}&limit=5`).then(r=>r.json()),
+    ]);
+    $("#kwList").innerHTML = kw.results.length ? kw.results.map(kwCard).join('') : '<div class="empty">Không có kết quả</div>';
+    $("#semList").innerHTML = sem.results.map(semCard).join('');
+    $("#lat").textContent = `${(sem.meta.tookMs).toFixed(0)} ms`;
+    $("#semsub").textContent = sem.intent.requiredAttrs?.length ? `thuộc tính: ${sem.intent.requiredAttrs.join(', ')}` : 'hiểu ý định';
+    const map = $("#map"), a = sem.intent.anchor;
+    map.classList.toggle("open", !!a);
+    if(a) $("#mapHint").textContent = `neo: ${a.name} (${a.lat.toFixed(4)}, ${a.lon.toFixed(4)})`;
+  }catch(e){
+    $("#semList").innerHTML = `<div class="empty">Lỗi máy chủ — thử lại</div>`;
+  }
+}
+
+$("#chips").innerHTML = CHIPS.map(q=>`<span class="chip" data-q="${esc(q)}">${esc(q)}</span>`).join('');
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>run(c.dataset.q)));
+$("#q").addEventListener("keydown", e=>{ if(e.key==="Enter") run(); });
+run(CHIPS[0]);
+</script>
+</body>
+</html>

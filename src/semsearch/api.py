@@ -15,9 +15,13 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
+from pathlib import Path
+
 from fastapi import FastAPI, Header, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
+
+UI_INDEX = Path(__file__).resolve().parents[2] / "ui" / "index.html"
 
 from .data import POI, load_pois
 from .explain import generate_reasons
@@ -124,9 +128,12 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
 
     def _rank_filtered(q: str, *, limit: int, category: Optional[str],
                        ref: Optional[tuple[float, float]], radius: Optional[float],
-                       bbox: Optional[tuple[float, float, float, float]]):
+                       bbox: Optional[tuple[float, float, float, float]], engine: str = "full"):
         intent = pipeline.parser.parse(q)
-        ranked = pipeline.rank_scored(q)  # full corpus, (id, score, breakdown)
+        if engine == "keyword":  # BM25-only lane for the demo's keyword column
+            ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
+        else:
+            ranked = pipeline.rank_scored(q)  # full corpus, (id, score, breakdown)
         picked = []
         for pid, score, breakdown in ranked:
             poi = pipeline.by_id[pid]
@@ -169,6 +176,12 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
                 return None, _error(400, str(e), rid)
         return (rid, q, limit, ref, radiusMeters, box, category), None
 
+    @app.get("/", response_class=HTMLResponse)
+    def index():
+        if UI_INDEX.exists():
+            return HTMLResponse(UI_INDEX.read_text(encoding="utf-8"))
+        return HTMLResponse("<h1>Tasco Semantic Search API</h1><p>UI not built. See /docs.</p>")
+
     @app.get("/health")
     def health():
         return {"status": "ok", "pois": len(pipeline.pois)}
@@ -182,6 +195,7 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         lat: Optional[float] = None, lon: Optional[float] = None,
         radiusMeters: Optional[float] = None, bbox: Optional[str] = None,
         category: Optional[str] = None, limit: int = 10, lang: str = "vi",
+        engine: str = "full",
         x_request_id: Optional[str] = Header(None),
     ):
         parsed, err = _common(q, lat, lon, radiusMeters, bbox, category, limit, x_request_id)
@@ -190,7 +204,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         rid, q, limit, ref, radius, box, category = parsed
         t0 = time.perf_counter()
         _, picked, source = _rank_filtered(q, limit=limit, category=category, ref=ref,
-                                           radius=radius, bbox=box)
+                                           radius=radius, bbox=box,
+                                           engine="keyword" if engine == "keyword" else "full")
         took = (time.perf_counter() - t0) * 1000
         results = [_place(p, s, ref, source) for p, s, _ in picked]
         resp = SearchResponse(query=q, results=results,

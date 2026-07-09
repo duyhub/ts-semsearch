@@ -87,6 +87,19 @@ def test_category_filter():
     assert cats == {"Trạm xăng"} or r.json()["meta"]["source"] == "fallback"
 
 
+def test_keyword_engine_lane():
+    r = client.get("/v1/search", params={"q": "quán cà phê yên tĩnh để làm việc", "engine": "keyword"})
+    assert r.status_code == 200
+    assert r.json()["results"]  # BM25-only lane still returns results
+
+
+def test_root_serves_ui():
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Tasco" in r.text
+
+
 def test_semantic_search_has_breakdown_reasons_intent():
     r = client.get("/v1/semantic-search", params={"q": "quán cà phê yên tĩnh để làm việc"})
     assert r.status_code == 200

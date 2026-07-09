@@ -292,6 +292,13 @@ judges watch live — the keyword-vs-semantic side-by-side. The full spec below 
 screen; `/metrics` (FR-15) is **P2 / cut-first** (the deck already carries the numbers, and a route
 judges never open is not worth night-of hours).
 
+**Implemented stack (Phase 7 decision):** shipped as a **lean vanilla HTML/CSS/JS single-page app**
+(`ui/index.html`) served by the FastAPI app at `/` (single origin, no CORS, no Node build step),
+fetching the live `/v1/search?engine=keyword` (keyword lane) and `/v1/semantic-search` (full
+pipeline). This delivers the same money-shot screen as the specced Next.js while honoring the
+CEO/design review's anti-rabbit-hole intent. Serve with
+`uv run uvicorn semsearch.api:create_app --factory`.
+
 Single page. **Layout (design review DD1):** the two result columns own the full screen width —
 LEFT "Keyword (BM25)" vs RIGHT "Semantic (AI)", side by side — **this is the demo money shot** and
 gets the most polish. The Leaflet map is NOT a third column (three columns are illegible at 1080p
