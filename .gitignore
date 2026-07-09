@@ -9,3 +9,5 @@ data/derived/
 *.npy
 personas/cache/
 .DS_Store
+.idea/
+.nimbalyst/
