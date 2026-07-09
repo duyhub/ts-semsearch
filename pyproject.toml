@@ -10,10 +10,13 @@ dependencies = [
     "pyarrow>=15.0",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=5.6.0",
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.51.0",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=8.0",
 ]
 
