@@ -71,6 +71,7 @@ class QueryIntent:
     soft_prefs: list[str] = field(default_factory=list)
     open_after: str | None = None
     price_max: int | None = None
+    price_pref: str | None = None  # "cheap" | "expensive" | None — parsed affordability direction
     city: str | None = None
     district: str | None = None
     content_terms: list[str] = field(default_factory=list)  # distinctive leftover terms -> subject filter

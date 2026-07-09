@@ -12,6 +12,7 @@ from semsearch.rank import (
     distance_signal,
     open_now_signal,
     popularity_signal,
+    price_signal,
     rating_signal,
     semantic_signal,
 )
@@ -96,3 +97,20 @@ def test_open_now_determinism_across_times():
     p = _poi(opening_hours="18:00-03:00")
     t = datetime(2026, 7, 11, 20, 0)
     assert open_now_signal(_intent(), p, t) == open_now_signal(_intent(), p, t)
+
+
+def test_price_signal_directions():
+    cheap = _intent(price_pref="cheap")
+    pricey = _intent(price_pref="expensive")
+    # cheap intent: level 1 (cheapest) scores high, level 4 (priciest) scores low
+    assert price_signal(cheap, _poi(price_level=1)) == pytest.approx(1.0)
+    assert price_signal(cheap, _poi(price_level=4)) == pytest.approx(0.0)
+    assert price_signal(cheap, _poi(price_level=1)) > price_signal(cheap, _poi(price_level=3))
+    # expensive intent inverts
+    assert price_signal(pricey, _poi(price_level=4)) == pytest.approx(1.0)
+    assert price_signal(pricey, _poi(price_level=1)) == pytest.approx(0.0)
+    # no price intent -> neutral (constant across POIs -> no ranking effect)
+    assert price_signal(_intent(), _poi(price_level=1)) == 0.5
+    assert price_signal(_intent(), _poi(price_level=4)) == 0.5
+    # unknown price_level -> neutral even with an intent
+    assert price_signal(cheap, _poi(price_level=None)) == 0.5

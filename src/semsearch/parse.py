@@ -38,6 +38,18 @@ CATEGORY_KEYWORDS: dict[str, str] = {
     "diem tham quan": "Điểm tham quan", "tham quan": "Điểm tham quan", "du lich": "Điểm tham quan",
 }
 
+# Price-direction keywords: folded phrase -> "cheap" | "expensive". Read from the
+# haystack independently of the stopword/residual logic, so "rẻ"/"sang" inform price
+# without ever becoming spurious subjects. Bare "dat" is DELIBERATELY excluded — folded
+# "đặt" ("to book", e.g. "đặt bàn") collides with "đắt" ("expensive"). On a cheap+
+# expensive conflict, cheap wins (the far more common intent).
+PRICE_KEYWORDS: dict[str, str] = {
+    "gia re": "cheap", "binh dan": "cheap", "tiet kiem": "cheap",
+    "re": "cheap", "cheap": "cheap", "budget": "cheap",
+    "sang trong": "expensive", "sang chanh": "expensive", "cao cap": "expensive",
+    "sang": "expensive", "luxury": "expensive",
+}
+
 # Attribute canonicalizer: folded query phrase -> canonical taxonomy attribute (the fixed 10).
 ATTRIBUTE_KEYWORDS: dict[str, str] = {
     "yen tinh": "yên tĩnh", "tinh lang": "yên tĩnh", "quiet": "yên tĩnh",
@@ -108,6 +120,15 @@ class Parser:
         if district:
             consumed.update(fold(district).split())
 
+        # Price direction (affordability intent). Token-boundary matched on the haystack;
+        # matched price tokens are consumed so "bình dân"/"giá rẻ" never leak into residual.
+        price_dirs = set()
+        for key, direction in PRICE_KEYWORDS.items():
+            if contains_token_seq(hay, key):
+                price_dirs.add(direction)
+                consumed.update(key.split())
+        price_pref = "cheap" if "cheap" in price_dirs else ("expensive" if price_dirs else None)
+
         # Residual = query content the parse did NOT explain (after stopwords). Its
         # presence blocks the category hard-filter (guards mis-parses P019/P055);
         # its distinctive (rare) tokens become the subject hard-filter.
@@ -129,6 +150,7 @@ class Parser:
             required_attrs=required,
             soft_prefs=[],
             open_after=open_after,
+            price_pref=price_pref,
             city=city,
             district=district,
             content_terms=content_terms,

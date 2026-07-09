@@ -1,6 +1,7 @@
-"""Interpretable 7-signal linear ranker (SPEC §6; PRD FR-7).
+"""Interpretable 9-signal linear ranker (SPEC §6; PRD FR-7).
 
-Maps 1:1 to the sponsor's Ranking_Signals. Review fixes baked in:
+Six signals map 1:1 to the sponsor's Ranking_Signals; `category` and `price` are our
+additions (category-consistency prior + affordability preference). Review fixes baked in:
   - semantic: fixed calibrated cosine band, NOT per-query min-max (OV6)
   - open_now: injected clock, handles 24/7 + overnight wraparound (A1, Phase-0)
   - rating: low Bayesian prior m so the narrow 3.8-4.7 band still varies (TODO-2)
@@ -18,22 +19,29 @@ from .data import POI, QueryIntent
 from .geo import haversine
 from .normalize import fold
 
-SIGNALS = ("semantic", "attributes", "category", "distance", "rating", "popularity", "open_now", "review")
+SIGNALS = ("semantic", "attributes", "category", "distance", "rating", "popularity",
+           "open_now", "review", "price")
 
 # Fixed cosine calibration band (OV6): a 0.30 cosine reads as 0, 0.75+ as 1.
 COS_LO, COS_HI = 0.30, 0.75
 RATING_M = 30.0          # low Bayesian prior (TODO-2)
 RATING_LO, RATING_HI = 3.5, 5.0
 DISTANCE_TAU_KM = 3.0    # exp(-d/tau) decay (SPEC §6)
+PRICE_MIN, PRICE_MAX = 1, 4  # dataset price_level range
 NEUTRAL = 0.5
 
 # Committed reference time for eval (A1): deterministic, so open_now can't drift.
 DEFAULT_EVAL_NOW = datetime(2026, 7, 11, 14, 0)  # 14:00, Asia/Ho_Chi_Minh assumed
 
-# Default weights (pre-tuning). tune.py overwrites data/weights.json.
+# Default weights (pre-tuning). tune.py overwrites the 8 tunable signals in
+# data/weights.json; `price` is a DELIBERATE FIXED preference weight (not eval-tuned —
+# only 2/60 eval queries express price, too few to inform it; NFR-6). weights.json has
+# no `price` key, so load_weights() supplies it here via its per-key fallback, leaving
+# the proven tuned weights untouched.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "semantic": 0.30, "attributes": 0.25, "category": 0.20, "distance": 0.10,
     "rating": 0.10, "popularity": 0.05, "open_now": 0.10, "review": 0.10,
+    "price": 0.20,
 }
 WEIGHTS_PATH = Path("data/weights.json")  # committed, tuned on tune split only (NFR-6)
 
@@ -128,6 +136,18 @@ def open_now_signal(intent: QueryIntent, poi: POI, now: datetime) -> float:
     return 1.0 if state else 0.3
 
 
+def price_signal(intent: QueryIntent, poi: POI) -> float:
+    """Affordability preference. NEUTRAL (0.5) when the query has no price intent —
+    constant across POIs, so it leaves the ranking of price-less queries unchanged —
+    and when a POI has no price_level. Otherwise a cheap intent scores cheaper POIs
+    high (level 1 -> 1.0), an expensive intent inverts it. Bidirectional, unlike the
+    always-higher-is-better signals (SPEC §6; PRD FR-7)."""
+    if intent.price_pref is None or poi.price_level is None:
+        return NEUTRAL
+    norm = (poi.price_level - PRICE_MIN) / (PRICE_MAX - PRICE_MIN)  # 0=cheapest .. 1=priciest
+    return _clamp01(1.0 - norm if intent.price_pref == "cheap" else norm)
+
+
 def review_signal(intent: QueryIntent, poi_review_tokens: set[str]) -> float:
     """Query need-terms matched against POI tags + description (distinct from the
     structured attributes field, SPEC §6)."""
@@ -157,6 +177,7 @@ class LinearRanker:
             "popularity": popularity_signal(poi),
             "open_now": open_now_signal(intent, poi, self.now),
             "review": review_signal(intent, review_tokens),
+            "price": price_signal(intent, poi),
         }
 
     def score(self, relevance: float, intent: QueryIntent, poi: POI,
