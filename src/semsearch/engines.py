@@ -10,6 +10,7 @@ from typing import Sequence
 
 from .data import POI
 from .eval import RankFn
+from .retrieve import BM25Index
 
 
 def make_random_ranker(pois: Sequence[POI], *, seed: int = 0) -> RankFn:
@@ -24,5 +25,15 @@ def make_random_ranker(pois: Sequence[POI], *, seed: int = 0) -> RankFn:
         shuffled = list(ids)
         random.Random(f"{seed}:{q.query_id}").shuffle(shuffled)
         return shuffled
+
+    return rank
+
+
+def make_bm25_ranker(pois: Sequence[POI]) -> RankFn:
+    """BM25 baseline over folded tokens (Phase 2, gate G1)."""
+    index = BM25Index(pois)
+
+    def rank(q) -> list[str]:
+        return index.rank_ids(q.input_query)
 
     return rank

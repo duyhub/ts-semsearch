@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from semsearch.data import load_eval, load_pois  # noqa: E402
-from semsearch.engines import make_random_ranker  # noqa: E402
+from semsearch.engines import make_bm25_ranker, make_random_ranker  # noqa: E402
 from semsearch.eval import METRIC_KEYS, evaluate  # noqa: E402
 from semsearch.split import SPLIT_PATH, load_split, make_split, select  # noqa: E402
 
@@ -28,7 +28,9 @@ REPORTS = Path("reports")
 def build_engine(name: str, pois):
     if name == "random":
         return make_random_ranker(pois, seed=0)
-    raise SystemExit(f"unknown engine {name!r} (Phase 1 supports: random)")
+    if name == "bm25":
+        return make_bm25_ranker(pois)
+    raise SystemExit(f"unknown engine {name!r} (supported: random, bm25)")
 
 
 def _row(label: str, cell: dict) -> str:
