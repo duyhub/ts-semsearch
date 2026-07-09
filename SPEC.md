@@ -33,7 +33,8 @@ tasco-semsearch/
 ├── data/
 │   ├── raw/ai_maps_track2_dataset_participants.xlsx
 │   ├── curated/admin_aliases.json  # hand-curated old↔new admin names (committed)
-│   └── derived/               # pois.parquet, eval.parquet, embeddings.npy (gitignored)
+│   ├── eval_split.json         # stratified 40/20 tune/test split (COMMITTED — NFR-6/7)
+│   └── derived/               # pois.parquet, embeddings.*.npy (gitignored cache)
 ├── src/semsearch/
 │   ├── data.py                # xlsx → typed frames
 │   ├── normalize.py           # Vietnamese text normalization
@@ -94,6 +95,22 @@ query_category, difficulty, skills_tested` → relevant set = expected ids, orde
 relevance (first id gain 3, second 2, rest 1) for NDCG. All metric reports break down
 per-difficulty **and per-query_category** (PRD FR-9) — the Mixed Language and Discovery
 subsets must be visible, not hidden inside the headline number.
+
+**Phase 0 verified data facts (from the actual xlsx — do not re-derive):**
+- Columns map: `poi_name→name`, `latitude→lat`, `longitude→lon`, `popularity_score→popularity`.
+  `brand` and `price_level` are always present (no nulls) though the dataclass keeps them optional.
+- `poi_id` is **bare** (`C001`, `R002`, `S001`, `G010`…); eval `expected_top_poi_ids` uses bare ids.
+  The API prepends `poi:` on output (§9). **Never infer category from the id prefix** — prefixes
+  (G=72/111) span multiple categories and are opaque.
+- `attributes`, `tags`, `expected_top_poi_ids`, `skills_tested` are all `;`-separated;
+  `expected_semantic_requirements` and `ranking_signals_to_use` are comma-separated.
+- `opening_hours` has **three forms**: `HH:MM-HH:MM`, literal **`24/7`** (always open), and
+  **overnight ranges that cross midnight** (`17:00-01:00`, `18:00-03:00`). `open_now` (§6) must
+  treat `24/7` as always-open and, when `end < start`, count open if `now ≥ start OR now ≤ end`.
+- Ranges: `rating` 3.8–4.7 (narrow — confirms the low-`m` Bayesian prior, TODOS TODO-2),
+  `review_count` 120–15 800, `popularity` 50–98, `price_level` 1–4, 4 cities, 12 categories.
+- Eval `query_category` counts: Semantic 18, Attribute 14, Intent 8, Location 6, Discovery 6,
+  Mixed 5, Category 2, **POI 1** — the n=1/n=2 cells are anecdotal; report n, don't CI an n=1 cell.
 
 ## 3. Vietnamese normalization (`normalize.py`)
 
