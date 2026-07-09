@@ -17,22 +17,11 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from semsearch.data import POI, load_eval, load_pois  # noqa: E402
+from semsearch.data import load_eval, load_pois  # noqa: E402
+from semsearch.embeddings import compose_doc_text  # noqa: E402  (shared, DRY)
 from semsearch.split import SPLIT_PATH, load_split, make_split, write_split  # noqa: E402
 
 DERIVED = Path("data/derived")
-
-
-def compose_doc_text(p: POI) -> str:
-    """Embedding document text (SPEC §4)."""
-    brand = p.brand or ""
-    sub = p.sub_category or ""
-    attrs = ", ".join(p.attributes)
-    tags = ", ".join(p.tags)
-    return (
-        f"{p.name}. {brand}. {p.category} / {sub}. {p.district}, {p.city}. "
-        f"Đặc điểm: {attrs}. {tags}. {p.description}"
-    )
 
 
 def main() -> None:

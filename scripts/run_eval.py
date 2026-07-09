@@ -18,7 +18,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from semsearch.data import load_eval, load_pois  # noqa: E402
-from semsearch.engines import make_bm25_ranker, make_random_ranker  # noqa: E402
+from semsearch.engines import (  # noqa: E402
+    make_bm25_ranker,
+    make_dense_ranker,
+    make_hybrid_ranker,
+    make_random_ranker,
+)
 from semsearch.eval import METRIC_KEYS, evaluate  # noqa: E402
 from semsearch.split import SPLIT_PATH, load_split, make_split, select  # noqa: E402
 
@@ -30,7 +35,11 @@ def build_engine(name: str, pois):
         return make_random_ranker(pois, seed=0)
     if name == "bm25":
         return make_bm25_ranker(pois)
-    raise SystemExit(f"unknown engine {name!r} (supported: random, bm25)")
+    if name == "dense":
+        return make_dense_ranker(pois)
+    if name == "hybrid":
+        return make_hybrid_ranker(pois)
+    raise SystemExit(f"unknown engine {name!r} (supported: random, bm25, dense, hybrid)")
 
 
 def _row(label: str, cell: dict) -> str:

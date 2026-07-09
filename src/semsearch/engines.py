@@ -10,7 +10,7 @@ from typing import Sequence
 
 from .data import POI
 from .eval import RankFn
-from .retrieve import BM25Index
+from .retrieve import BM25Index, DenseIndex, rrf_fuse
 
 
 def make_random_ranker(pois: Sequence[POI], *, seed: int = 0) -> RankFn:
@@ -35,5 +35,31 @@ def make_bm25_ranker(pois: Sequence[POI]) -> RankFn:
 
     def rank(q) -> list[str]:
         return index.rank_ids(q.input_query)
+
+    return rank
+
+
+def make_dense_ranker(pois: Sequence[POI], provider: str = "local") -> RankFn:
+    """Dense (embedding) retrieval baseline (Phase 3)."""
+    from .embeddings import get_embedder
+
+    index = DenseIndex(pois, get_embedder(provider))
+
+    def rank(q) -> list[str]:
+        return index.rank_ids(q.input_query)
+
+    return rank
+
+
+def make_hybrid_ranker(pois: Sequence[POI], provider: str = "local") -> RankFn:
+    """BM25 + dense fused with RRF (Phase 3, gate G2)."""
+    from .embeddings import get_embedder
+
+    bm25 = BM25Index(pois)
+    dense = DenseIndex(pois, get_embedder(provider))
+
+    def rank(q) -> list[str]:
+        fused = rrf_fuse([bm25.rank_ids(q.input_query), dense.rank_ids(q.input_query)])
+        return [pid for pid, _ in fused]
 
     return rank
