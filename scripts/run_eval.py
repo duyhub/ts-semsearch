@@ -21,6 +21,7 @@ from semsearch.data import load_eval, load_pois  # noqa: E402
 from semsearch.engines import (  # noqa: E402
     make_bm25_ranker,
     make_dense_ranker,
+    make_full_ranker,
     make_hybrid_ranker,
     make_random_ranker,
 )
@@ -39,7 +40,9 @@ def build_engine(name: str, pois):
         return make_dense_ranker(pois)
     if name == "hybrid":
         return make_hybrid_ranker(pois)
-    raise SystemExit(f"unknown engine {name!r} (supported: random, bm25, dense, hybrid)")
+    if name == "full":
+        return make_full_ranker(pois)
+    raise SystemExit(f"unknown engine {name!r} (supported: random, bm25, dense, hybrid, full)")
 
 
 def _row(label: str, cell: dict) -> str:

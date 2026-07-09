@@ -63,3 +63,16 @@ def make_hybrid_ranker(pois: Sequence[POI], provider: str = "local") -> RankFn:
         return [pid for pid, _ in fused]
 
     return rank
+
+
+def make_full_ranker(pois: Sequence[POI], *, weights=None, now=None, provider: str = "local") -> RankFn:
+    """Full pipeline: parse -> filter -> relax -> 7-signal re-rank (Phase 4, gate G3)."""
+    from .pipeline import FullPipeline
+    from .rank import load_weights
+
+    pipe = FullPipeline(pois, weights=weights or load_weights(), now=now, provider=provider)
+
+    def rank(q) -> list[str]:
+        return pipe.rank_ids(q.input_query)
+
+    return rank

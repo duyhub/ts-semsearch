@@ -164,16 +164,15 @@ distinct cached vectors.
   both score the **full 111-doc corpus** (no top-k cut).
 - `rrf_fuse(runs, c=60)`: standard reciprocal-rank fusion, producing a fused **relevance score for
   every POI** — used to compute the `semantic` ranking signal, **not** as a candidate gate.
-- **Filter first, then rank all survivors (eng-review OV1).** Hard filters run over the *entire
-  corpus*: category (if confidently parsed), city/district, `required_attrs ⊆ poi.attributes`. All
-  surviving POIs are ranked — there is no top-30 truncation before filtering. On 111 docs we can
-  afford to score everything; a top-30-then-filter order can discard the correct POI (e.g. a quiet
-  café sitting at fusion rank 35 behind loud venues) *before* the `yên tĩnh` filter selects it,
-  capping Recall@3 on exactly the Hard queries G3 rides on.
-- Relaxation rule (unchanged): if a hard filter leaves <3 survivors, demote the newest constraint to
-  a soft preference. Relaxation loosens filters; it cannot recall a doc that was never scored — which
-  is why filtering the full corpus (not a truncated candidate set) matters.
-- Test: a relevant POI with a low fusion rank still surfaces after filter+rank.
+- **Re-rank over hybrid, no destructive filtering (OV1 + G3-review).** Hybrid RRF relevance is
+  computed for the *entire corpus* (no top-k cut), then the 7-signal ranker RE-ORDERS all POIs using
+  that hybrid relevance as its `semantic` signal plus attributes/distance/rating/popularity/
+  open_now/review. Category and required-attributes are **soft signals, not AND-filters** — an
+  earlier filter-then-rank design (with <3-survivor relaxation) was measured to *lower* recall
+  (ablation: Recall@5 0.954→0.879) by deleting relevant POIs, so it was removed. Because
+  `semantic == hybrid relevance`, all-weight-on-semantic reproduces hybrid exactly, so tuning makes
+  full ≥ hybrid by construction (ablation confirms: full NDCG@5 0.935 > hybrid 0.922 on tune).
+- Test: `full (+re-rank)` beats `hybrid` on the ablation (NDCG@5, Recall@5).
 - **Empty-set backstop (eng-review C1, protects G5).** Relaxation loosens filters but cannot
   manufacture a result when retrieval itself is empty (emoji-only, gibberish, or fully
   out-of-vocabulary `q`). If the survivor set is still empty after retrieval + relaxation, return

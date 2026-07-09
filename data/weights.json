@@ -1,0 +1,21 @@
+{
+  "weights": {
+    "semantic": 0.5,
+    "attributes": 0.05,
+    "distance": 0.4,
+    "rating": 0.1,
+    "popularity": 0.2,
+    "open_now": 0.05,
+    "review": 0.1
+  },
+  "tuned_ndcg5_tune": 0.9353667906014269,
+  "grid": [
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5
+  ],
+  "margin": 0.001
+}
