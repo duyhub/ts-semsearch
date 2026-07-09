@@ -62,6 +62,18 @@ def test_generic_adjective_is_stopword(parser):
     assert intent.content_terms == []
 
 
+def test_superlative_marker_is_stopword(parser):
+    # "quán ăn ngon nhất": 'nhất' (superlative "most/best") is a quality modifier,
+    # not a subject — even though it coincidentally appears in the POI name
+    # "Công viên Thống Nhất" (df=1, inside the distinctive window). It must NOT
+    # leak into content_terms and hijack the subject filter (the reported bug).
+    intent = parser.parse("quán ăn ngon nhất")
+    assert intent.category == "Nhà hàng"
+    assert "nhat" not in intent.content_terms
+    assert intent.content_terms == []
+    assert not intent.has_residual
+
+
 def test_abbrev_district_resolves_anchor_and_district(parser):
     # "q1 tphcm" (abbreviated) must resolve to the Quận 1 district anchor and
     # populate intent.district — previously the folded "q1" never matched the

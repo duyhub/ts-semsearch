@@ -40,9 +40,11 @@ STOPWORDS: frozenset[str] = frozenset({
     # generic place / intent words
     "noi", "cho", "dia", "diem", "quan", "tim", "kiem", "muon", "can", "gi", "nao",
     "phu", "hop", "the",
-    # generic quality adjectives
+    # generic quality adjectives + the superlative marker "nhất" (most/best/-est:
+    # "ngon nhất", "tốt nhất", "gần nhất") — a quality modifier, never a subject,
+    # even though it appears in the proper name "Thống Nhất".
     "ngon", "dep", "re", "tot", "sang", "chanh", "xin", "cu", "lon", "nho", "rong",
-    "rai", "sach", "se", "gia", "noi tieng", "tieng",
+    "rai", "sach", "se", "gia", "noi tieng", "tieng", "nhat",
     # generic descriptors (incl. common English) that can appear in POI names but are
     # not subjects: view/city/scenery, dining verbs, time words
     "view", "thanh", "an", "uong", "mon", "gio",

@@ -44,6 +44,16 @@ def test_pure_category_returns_only_that_category(pipe):
     assert all(r.poi.category == "Quán cà phê" for r in results)
 
 
+def test_superlative_does_not_hijack_to_proper_name(pipe):
+    # "quan an ngon nhat" (best restaurant): the superlative 'nhất' must not
+    # subject-filter the lineup down to "Công viên Thống Nhất" (a park). Results
+    # must be restaurants matching the parsed category.
+    _, results = pipe.search("quan an ngon nhat", k=5)
+    assert results
+    assert results[0].poi.category == "Nhà hàng"
+    assert all(r.poi.category == "Nhà hàng" for r in results)
+
+
 def test_pure_location_returns_only_that_district(pipe):
     # "quan 1 tphcm" is a pure location query -> ONLY District 1 / TP.HCM, nothing else.
     _, results = pipe.search("quan 1 tphcm", k=10)
