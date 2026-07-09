@@ -16,8 +16,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
-from .data import POI, QueryIntent
+from .data import POI, QueryIntent, RankedResult
 from .embeddings import get_embedder
+from .explain import generate_reasons
 from .geo import Gazetteer
 from .normalize import fold
 from .parse import Parser
@@ -73,3 +74,15 @@ class FullPipeline:
 
     def rank_ids(self, query_text: str) -> list[str]:
         return [pid for pid, _, _ in self.rank_scored(query_text)]
+
+    def search(self, query_text: str, k: int = 10) -> tuple[QueryIntent, list[RankedResult]]:
+        """Top-k results with per-signal breakdown + Vietnamese reasons (API/UI, FR-8)."""
+        intent = self.parser.parse(query_text)
+        results: list[RankedResult] = []
+        for pid, score, breakdown in self.rank_scored(query_text)[:k]:
+            poi = self.by_id[pid]
+            results.append(
+                RankedResult(poi=poi, score=score, breakdown=breakdown,
+                             reasons=generate_reasons(intent, poi))
+            )
+        return intent, results
