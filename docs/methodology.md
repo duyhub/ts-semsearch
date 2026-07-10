@@ -106,12 +106,28 @@ full re-rank **0.959** (NDCG@5) — each stage adds value.
 
 ## Models & provider posture
 
-Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary — and today the only
-**implemented** — provider: the build, tuning, and gates all run against it, so the demo
-has no hard network dependency (NFR-3). Amazon Bedrock (`cohere.embed-multilingual-v3` /
-Titan v2, Claude for LLM parsing) is a **planned/roadmap** provider for Built-with-AWS
-eligibility: the provider-switch scaffolding (a model-id registry and provider-stamped
-caches, so a switch can never silently mix vector spaces) is in place, but the Bedrock
-client itself is not yet wired — selecting it raises a clear "not wired yet" error, and
-`reports/embedding-choice.md` accordingly records the Bedrock rows as **skipped** (only
-`local` is measured). It is never the default, and never required to run.
+Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary provider: the build,
+tuning, and gates all run against it, so the demo has no hard network dependency (NFR-3).
+
+**Amazon Bedrock is implemented as a selectable provider** — never the default, never
+required to run:
+
+- **Embeddings:** `bedrock-cohere` (`cohere.embed-multilingual-v3`) and `bedrock-titan`
+  (`amazon.titan-embed-text-v2:0`), both 1024-dim, L2-normalized in-code. A construction-time
+  preflight (2 s connect / 10 s read timeout, one attempt) degrades the whole pipeline to
+  `local` on any failure, so vector spaces are chosen coherently and never mixed
+  (provider-stamped caches enforce this). A per-query failure after construction degrades
+  that query to BM25-only ordering (zero dense vector) instead of crashing or mixing spaces.
+- **LLM query parse (FR-4):** Claude (Haiku 4.5) via Bedrock `converse`, env-gated with
+  `SEMSEARCH_LLM_PARSE=bedrock` (off by default — the contract endpoint stays deterministic,
+  NFR-5). Output is validated against the closed category/attribute vocabularies and
+  union-merged with the rule parse; rules win conflicts; any failure or a ~3 s timeout falls
+  back to the rule parse alone. **Langfuse tracing** wraps every LLM call when
+  `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` are set (silent no-op otherwise).
+- **Preflight:** `uv run python scripts/check_bedrock.py` verifies credentials, region, and
+  per-model access in seconds.
+
+Measured provider comparison lives in `reports/embedding-choice.md`; rows for providers
+without credentials at report time are recorded as unavailable rather than faked. On this
+dataset the gates were tuned and passed against `local`; Bedrock numbers are reported when
+credentials are configured (re-run `scripts/embedding_choice.py`).

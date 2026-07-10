@@ -76,13 +76,13 @@ cold and warm p95 separately.
 
 - Python 3.11, managed with [uv](https://github.com/astral-sh/uv). No Node required —
   the demo UI is a lean single-page app served by the API itself.
-- AWS Bedrock is a **planned/roadmap** embedding + LLM provider
-  (`cohere.embed-multilingual-v3` / Titan v2, Claude for parsing) for Built-with-AWS
-  eligibility. The provider-switch scaffolding and provider-stamped caches are in place, but
-  **only local `bge-m3` is implemented today** — selecting a Bedrock provider raises a clear
-  "not wired yet" error (`reports/embedding-choice.md` records it as skipped). Local `bge-m3`
-  + the rule parser are the default and the only path the demo runs on; **no AWS credentials
-  required**.
+- **AWS Bedrock is an implemented, selectable provider** (Built-with-AWS): embeddings via
+  `cohere.embed-multilingual-v3` or Titan v2 (`provider='bedrock-cohere'|'bedrock-titan'`),
+  and Claude (Haiku 4.5) query parsing behind `SEMSEARCH_LLM_PARSE=bedrock`, with Langfuse
+  tracing on LLM calls when `LANGFUSE_*` keys are set. Every Bedrock call has a timeout and
+  a coherent local fallback — no credentials means the engine runs exactly as local-only.
+  Verify a setup with `uv run python scripts/check_bedrock.py`. Local `bge-m3` + the rule
+  parser remain the default demo path; **no AWS credentials required**.
 
 ## Setup
 

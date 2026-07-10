@@ -17,9 +17,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "semsearch"
 
 # Everything that ships and could leak eval text: the library, the scripts (incl. the
-# sample-query showcase), and the demo UI (its CHIPS array). Illustrative demo queries
-# are allowed — but must NOT be verbatim eval-query text (reword ours if they collide).
-SCANNED = list(SRC.rglob("*.py")) + list((ROOT / "scripts").glob("*.py")) + [ROOT / "ui" / "index.html"]
+# sample-query showcase), the demo UI (its CHIPS array) — and the tests themselves
+# (a verbatim eval query in a test means behavior was fitted to eval text; reword the
+# test's query, never weaken this guard). Illustrative demo queries are allowed — but
+# must NOT be verbatim eval-query text (reword ours if they collide).
+SCANNED = (
+    list(SRC.rglob("*.py"))
+    + list((ROOT / "scripts").glob("*.py"))
+    + [ROOT / "ui" / "index.html"]
+    + list((ROOT / "tests").glob("*.py"))
+)
 
 
 @pytest.fixture(scope="module")
