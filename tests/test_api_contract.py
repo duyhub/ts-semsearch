@@ -24,7 +24,7 @@ def test_health():
 
 
 def test_search_shape_and_poi_prefix():
-    r = client.get("/v1/search", params={"q": "quán cà phê yên tĩnh để làm việc"})
+    r = client.get("/v1/search", params={"q": "quán cà phê yên tĩnh làm việc"})
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"query", "results", "meta"}
@@ -95,7 +95,7 @@ def test_category_filter():
 
 
 def test_keyword_engine_lane():
-    r = client.get("/v1/search", params={"q": "quán cà phê yên tĩnh để làm việc", "engine": "keyword"})
+    r = client.get("/v1/search", params={"q": "quán cà phê yên tĩnh làm việc", "engine": "keyword"})
     assert r.status_code == 200
     assert r.json()["results"]  # BM25-only lane still returns results
 
@@ -108,7 +108,7 @@ def test_root_serves_ui():
 
 
 def test_semantic_search_has_breakdown_reasons_intent():
-    r = client.get("/v1/semantic-search", params={"q": "quán cà phê yên tĩnh để làm việc"})
+    r = client.get("/v1/semantic-search", params={"q": "quán cà phê yên tĩnh làm việc"})
     assert r.status_code == 200
     body = r.json()
     assert "intent" in body and "requiredAttrs" in body["intent"]

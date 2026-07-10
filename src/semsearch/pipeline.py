@@ -13,14 +13,24 @@ the API layer applies the top-N + popularity backstop for out-of-vocab inputs.
 """
 from __future__ import annotations
 
+import logging
+import os
+import threading
 from datetime import datetime
 from typing import Sequence
 
 from .data import POI, QueryIntent, RankedResult, content_tokens
-from .embeddings import get_embedder
+from .embeddings import BEDROCK_PROVIDERS, get_embedder, resolve_provider
 from .explain import generate_reasons
 from .geo import Gazetteer, haversine
+from .llm_parse import LLMParser, merge_intent
 from .normalize import fold
+
+logger = logging.getLogger(__name__)
+
+# FR-4 / NFR-5: the LLM intent parse is OFF by default so /v1/search stays deterministic.
+# Setting SEMSEARCH_LLM_PARSE=bedrock layers a Claude parse on top of the rule parse.
+LLM_PARSE_ENV = "SEMSEARCH_LLM_PARSE"
 
 # When a query resolves an explicit location anchor, "gần X" must mean near X:
 # near-anchor POIs rank first, far ones drop to the tail (recall preserved).
@@ -55,7 +65,24 @@ class FullPipeline:
                  now: datetime | None = None, provider: str = "local"):
         self.pois = list(pois)
         self.by_id = {p.poi_id: p for p in self.pois}
-        self.dense = DenseIndex(self.pois, get_embedder(provider))
+        # Coherent provider choice BEFORE building the index: a bedrock provider whose
+        # preflight fails (no creds/model access/timeout) degrades to local here, so the
+        # whole run stays in one vector space (A2) and the demo never depends on the network.
+        provider = resolve_provider(provider)
+        try:
+            self.dense = DenseIndex(self.pois, get_embedder(provider))
+        except Exception as exc:  # noqa: BLE001 - bedrock-only construction fallback
+            if provider not in BEDROCK_PROVIDERS:
+                raise  # a LOCAL build failure is a setup bug — propagate loudly
+            # The preflight only pings one string; the network can still drop DURING
+            # the 111-doc matrix build. Rebuild in the local space (one warning) so
+            # construction keeps the 'coherent for the entire run' guarantee.
+            logger.warning(
+                "Bedrock provider %r failed while building the doc matrix (%s: %s); "
+                "rebuilding with local bge-m3.",
+                provider, type(exc).__name__, exc,
+            )
+            self.dense = DenseIndex(self.pois, get_embedder("local"))
         self.bm25 = BM25Index(self.pois)
         self.gazetteer = Gazetteer(self.pois)
         self.parser = Parser(self.pois, self.gazetteer)
@@ -64,6 +91,12 @@ class FullPipeline:
         self._attrs = {p.poi_id: _attrs_folded(p) for p in self.pois}
         self._review = {p.poi_id: _review_tokens(p) for p in self.pois}
         self._content = {p.poi_id: content_tokens(p) for p in self.pois}  # subject-filter tokens
+        # FR-4 gate: construct the LLM parser only when opted in. Construction is lazy —
+        # no boto3 client / credential lookup until the first parse — so this is free when
+        # gated off, and the default path below executes exactly today's rule-only code.
+        self._llm_parser = LLMParser() if os.environ.get(LLM_PARSE_ENV) == "bedrock" else None
+        self._llm_warned = False  # log the "LLM unavailable" warning at most once
+        self._llm_warn_lock = threading.Lock()  # latch is check-then-set; API serves threaded
 
     def _relevance(self, query_text: str, intent: QueryIntent,
                    dense_ids: list[str]) -> dict[str, float]:
@@ -78,9 +111,41 @@ class FullPipeline:
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
 
-    def rank_scored(self, query_text: str) -> list[tuple[str, float, dict[str, float]]]:
-        """Full-corpus ranking with per-signal breakdowns (used by the API/explanations)."""
-        intent = self.parser.parse(query_text)
+    def resolve_intent(self, query_text: str) -> QueryIntent:
+        """The ONE intent resolution for a query — public because the API layer must use
+        the SAME intent object for ranking, the intent echo, and reasons[] (a rule-only
+        re-parse there would contradict LLM-merged results). The rule parser always runs
+        (FR-2). When the LLM gate is off (default) this is byte-identical to
+        `self.parser.parse` — the gate short-circuits before any new code runs. When
+        SEMSEARCH_LLM_PARSE=bedrock, a Claude parse enriches the rule intent via
+        `merge_intent`; on ANY failure (network, creds, bad JSON) the rule intent is used
+        alone, with a single warning logged once (lock: uvicorn serves on a threadpool)."""
+        rule_intent = self.parser.parse(query_text)
+        if self._llm_parser is None:
+            return rule_intent
+        llm_out = None
+        try:
+            llm_out = self._llm_parser.parse(query_text)  # never raises; None on failure
+        except Exception:  # noqa: BLE001 - defensive; the LLM parse must never break a query
+            llm_out = None
+        if llm_out is None:
+            with self._llm_warn_lock:
+                if not self._llm_warned:
+                    logger.warning(
+                        "LLM parse (%s=bedrock) unavailable; serving rule-parsed results. "
+                        "Run scripts/check_bedrock.py to diagnose.", LLM_PARSE_ENV,
+                    )
+                    self._llm_warned = True
+            return rule_intent
+        return merge_intent(rule_intent, llm_out)
+
+    def rank_scored(self, query_text: str, *, intent: QueryIntent | None = None,
+                    ) -> list[tuple[str, float, dict[str, float]]]:
+        """Full-corpus ranking with per-signal breakdowns (used by the API/explanations).
+        `intent` may be passed in so a single query resolves its intent once (the LLM parse
+        fires at most once per query — see `search`); when omitted it is resolved here."""
+        if intent is None:
+            intent = self.resolve_intent(query_text)
         dense_ids = [pid for pid, _ in self.dense.search(query_text)]  # one dense pass, reused below
         rel = self._relevance(query_text, intent, dense_ids)
         out: list[tuple[str, float, dict[str, float]]] = []
@@ -167,9 +232,9 @@ class FullPipeline:
 
     def search(self, query_text: str, k: int = 10) -> tuple[QueryIntent, list[RankedResult]]:
         """Top-k results with per-signal breakdown + Vietnamese reasons (API/UI, FR-8)."""
-        intent = self.parser.parse(query_text)
+        intent = self.resolve_intent(query_text)  # resolved once; passed through to ranking
         results: list[RankedResult] = []
-        for pid, score, breakdown in self.rank_scored(query_text)[:k]:
+        for pid, score, breakdown in self.rank_scored(query_text, intent=intent)[:k]:
             poi = self.by_id[pid]
             results.append(
                 RankedResult(poi=poi, score=score, breakdown=breakdown,

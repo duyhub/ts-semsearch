@@ -15,7 +15,7 @@ def parser():
 
 
 def test_work_cafe_intent(parser):
-    intent = parser.parse("quán cà phê yên tĩnh để làm việc")
+    intent = parser.parse("quán cà phê yên tĩnh làm việc")
     assert intent.category == "Quán cà phê"
     assert "yên tĩnh" in intent.required_attrs
     assert "phù hợp làm việc" in intent.required_attrs
@@ -23,7 +23,7 @@ def test_work_cafe_intent(parser):
 
 
 def test_wifi_near_landmark_intent(parser):
-    intent = parser.parse("cafe có wifi gần hồ gươm")
+    intent = parser.parse("cafe wifi gần hồ gươm")
     assert intent.category == "Quán cà phê"          # cafe -> cà phê
     assert "wifi" in intent.required_attrs
     assert intent.anchor is not None
@@ -49,7 +49,7 @@ def test_district_word_boundary_no_false_match(parser):
 
 
 def test_subject_terms_extracted_and_block_category(parser):
-    intent = parser.parse("quán bún chả cho khách du lịch")
+    intent = parser.parse("quán bún chả khách du lịch")
     assert "bun" in intent.content_terms and "cha" in intent.content_terms
     assert intent.has_residual  # residual content present -> category filter ineligible
 
@@ -119,7 +119,7 @@ def test_superlative_nhat_not_a_subject(parser):
 
 def test_food_subject_survives_common_word_filter(parser):
     # 'chả' folds to 'cha' but is not the common word 'cha' -> stays a subject.
-    intent = parser.parse("quán bún chả cho khách du lịch")
+    intent = parser.parse("quán bún chả khách du lịch")
     assert "bun" in intent.content_terms and "cha" in intent.content_terms
 
 

@@ -157,11 +157,18 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     def _rank_filtered(q: str, *, limit: int, category: Optional[str],
                        ref: Optional[tuple[float, float]], radius: Optional[float],
                        bbox: Optional[tuple[float, float, float, float]], engine: str = "full"):
-        intent = pipeline.parser.parse(q)
         if engine == "keyword":  # BM25-only lane for the demo's keyword column
+            # intent is unused by this lane's ranking and discarded by /v1/search — rule
+            # parse only, so the keyword column never pays (or depends on) an LLM call.
+            intent = pipeline.parser.parse(q)
             ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
         else:
-            ranked = pipeline.rank_scored(q)  # full corpus, (id, score, breakdown)
+            # Resolve the intent ONCE and pass it through: ranking, the /v1/semantic-search
+            # intent echo, and reasons[] must all read the SAME object. A rule-only re-parse
+            # here + LLM-merged re-resolution inside rank_scored would contradict each other
+            # whenever SEMSEARCH_LLM_PARSE=bedrock enriches the parse.
+            intent = pipeline.resolve_intent(q)
+            ranked = pipeline.rank_scored(q, intent=intent)  # full corpus, (id, score, breakdown)
 
         def _passes(poi: POI) -> bool:
             """The caller's explicit category / bbox / radius window (radius=0 is an

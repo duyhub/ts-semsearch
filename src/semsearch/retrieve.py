@@ -89,6 +89,13 @@ class DenseIndex:
 
     def search(self, query_text: str, k: int | None = None) -> list[tuple[str, float]]:
         q = embed_query(self.emb, query_text)  # (d,), normalized
+        if not np.any(q):
+            # Degraded query embed (bedrock failure -> zero vector): dense has NO
+            # opinion. An all-zero matvec argsorted would return DATASET-ORDER ids,
+            # polluting RRF fusion and the subject-corroboration top-K. An empty
+            # ranking makes fusion defer cleanly to BM25. (A real embedding of real
+            # text is unit-norm, never all-zero.)
+            return []
         sims = self.matrix @ q  # cosine (both L2-normalized)
         order = np.argsort(-sims)
         if k is not None:
