@@ -1,5 +1,5 @@
 """SearchEngine facade (SPEC §2, §9). The frozen interface the API and UI build
-against; later phases extend it with dense retrieval, the 7-signal ranker,
+against; later phases extend it with dense retrieval, the 9-signal ranker,
 explanations, and an injected `now` clock (A1) — without changing the signature.
 
 Phase 2: BM25-only ranking.

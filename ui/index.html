@@ -29,6 +29,7 @@
     /* Okabe-Ito colourblind-safe categorical palette, one hue per signal (SPEC §10) */
     --sig-semantic:#0072b2; --sig-attributes:#e69f00; --sig-category:#009e73; --sig-distance:#56b4e9;
     --sig-rating:#cc79a7; --sig-popularity:#8250a8; --sig-open_now:#b8860b; --sig-review:#d55e00;
+    --sig-price:#117777;
     --font:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   *{box-sizing:border-box}
@@ -303,10 +304,11 @@ const CHIPS = [
   "quan cafe yen tinh gan q1",
 ];
 const SIG_LABEL = {semantic:"Ngữ nghĩa", attributes:"Thuộc tính", category:"Danh mục", distance:"Khoảng cách",
-  rating:"Đánh giá", popularity:"Phổ biến", open_now:"Đang mở", review:"Tags/mô tả"};
+  rating:"Đánh giá", popularity:"Phổ biến", open_now:"Đang mở", review:"Tags/mô tả", price:"Giá"};
 const SIG_GLOSS = {semantic:"khớp ngữ nghĩa (BM25 + vector, RRF)", attributes:"tiện ích khớp nhu cầu",
   category:"đúng loại địa điểm", distance:"gần điểm neo", rating:"đánh giá (Bayesian)",
-  popularity:"độ phổ biến", open_now:"đang mở cửa", review:"nhu cầu khớp tags/mô tả"};
+  popularity:"độ phổ biến", open_now:"đang mở cửa", review:"nhu cầu khớp tags/mô tả",
+  price:"phù hợp mức giá (rẻ / cao cấp)"};
 const fmtInt = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, took:0, selected:null, weights:{}, loading:false};

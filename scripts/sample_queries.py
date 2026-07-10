@@ -29,6 +29,8 @@ QUERIES = [
     ("Attribute (family)", "quán ăn phù hợp gia đình"),
     ("Category + district", "trung tâm thương mại ở quận 1"),
     ("Non-accented", "quan cafe yen tinh gan q1"),
+    ("Price (cheap)", "quán ăn giá rẻ ở quận 1"),
+    ("Price (upscale)", "nhà hàng sang trọng"),
     ("Time (late-night)", "nhà thuốc mở khuya"),
     ("Discovery / check-in", "điểm check-in sống ảo ở Đà Lạt"),
     ("Location (landmark)", "ATM gần chợ Bến Thành"),
@@ -37,7 +39,7 @@ QUERIES = [
 
 SIG_LABEL = {"semantic": "ngữ nghĩa", "attributes": "thuộc tính", "category": "danh mục",
              "distance": "khoảng cách", "rating": "đánh giá", "popularity": "phổ biến",
-             "open_now": "đang mở", "review": "tags"}
+             "open_now": "đang mở", "review": "tags", "price": "giá"}
 
 
 def main() -> None:

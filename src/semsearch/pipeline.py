@@ -1,7 +1,7 @@
 """Full search pipeline (SPEC §5-6), reworked per the G3 review.
 
 Design: hybrid retrieval (BM25 + dense, RRF-fused over the FULL corpus, OV1)
-provides the relevance backbone; the 7-signal linear ranker RE-ORDERS the whole
+provides the relevance backbone; the 9-signal linear ranker RE-ORDERS the whole
 corpus using that hybrid relevance as its `semantic` signal plus attributes /
 distance / rating / popularity / open_now / review. No destructive hard
 filtering — attributes and category flow through the signals, not an AND-filter

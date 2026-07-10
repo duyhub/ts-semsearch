@@ -66,7 +66,7 @@ def make_hybrid_ranker(pois: Sequence[POI], provider: str = "local") -> RankFn:
 
 
 def make_full_ranker(pois: Sequence[POI], *, weights=None, now=None, provider: str = "local") -> RankFn:
-    """Full pipeline: parse -> filter -> relax -> 7-signal re-rank (Phase 4, gate G3)."""
+    """Full pipeline: parse -> filter -> relax -> 9-signal re-rank (Phase 4, gate G3)."""
     from .pipeline import FullPipeline
     from .rank import load_weights
 

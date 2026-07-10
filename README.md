@@ -15,13 +15,13 @@ and returns ranked results **with explanations**. Integration-ready with the Tas
 ```
 query ─▶ normalize (fold diacritics, expand abbreviations) ─▶ parse intent (rules)
       ─▶ BM25 + dense (bge-m3) ──RRF──▶ hybrid relevance
-      ─▶ re-rank all POIs by 8 interpretable signals ─▶ faithful explanations
+      ─▶ re-rank all POIs by 9 interpretable signals ─▶ faithful explanations
       ─▶ hard-constraint filter (pure category / location / subject) ─▶ never-empty
       ─▶ /v1/search (Tasco contract) + /v1/semantic-search ─▶ demo UI
 ```
 
-Signals: **7 map 1:1 to the sponsor's `Ranking_Signals`, plus a `category`-fit signal**
-we added. Full write-up + the mapping: [`docs/methodology.md`](docs/methodology.md).
+Signals: **6 map 1:1 to the sponsor's `Ranking_Signals`, plus `category`-fit and `price`
+preference** we added (9 total). Full write-up + the mapping: [`docs/methodology.md`](docs/methodology.md).
 Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart). OpenAPI: `openapi.json`.
 
 ## Results — all five gates green
