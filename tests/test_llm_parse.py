@@ -163,7 +163,9 @@ def test_converse_request_shape():
 # --------------------------------------------------------------------------- #
 # Model-id fallback: APAC profile rejected -> retry the global id             #
 # --------------------------------------------------------------------------- #
-def test_falls_back_to_global_model_id_on_validation_error(monkeypatch):
+def test_falls_back_through_model_id_chain_on_validation_error(monkeypatch):
+    # apac profile invalid -> global profile invalid -> plain id succeeds. Verified live on
+    # the AABW account: which profile exists varies per account, so the chain must walk.
     monkeypatch.delenv(L.CLAUDE_MODEL_ENV, raising=False)
     from botocore.exceptions import ClientError
 
@@ -172,13 +174,15 @@ def test_falls_back_to_global_model_id_on_validation_error(monkeypatch):
                    "Message": "The provided model identifier is invalid."}},
         "Converse",
     )
+    chain = [L.DEFAULT_CLAUDE_MODEL, *L.FALLBACK_CLAUDE_MODELS]
     client = FakeConverseClient(per_model={
-        L.DEFAULT_CLAUDE_MODEL: err,
-        L.FALLBACK_CLAUDE_MODEL: _llm_json(category="ATM"),
+        chain[0]: err,
+        chain[1]: err,
+        chain[2]: _llm_json(category="ATM"),
     })
     out = make_parser(client).parse("q")
     assert out["category"] == "ATM"
-    assert [c["modelId"] for c in client.calls] == [L.DEFAULT_CLAUDE_MODEL, L.FALLBACK_CLAUDE_MODEL]
+    assert [c["modelId"] for c in client.calls] == chain
 
 
 def test_non_model_error_does_not_fall_through():

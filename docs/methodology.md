@@ -128,6 +128,7 @@ required to run:
   per-model access in seconds.
 
 Measured provider comparison lives in `reports/embedding-choice.md`; rows for providers
-without credentials at report time are recorded as unavailable rather than faked. On this
-dataset the gates were tuned and passed against `local`; Bedrock numbers are reported when
-credentials are configured (re-run `scripts/embedding_choice.py`).
+unavailable at report time are recorded as such rather than faked. **Measured live on the
+event AWS account** (dense-only, tune split): `bedrock-cohere` Recall@5 0.958 / NDCG@5 0.860
+vs local `bge-m3` 0.929 / 0.881 — local stays the chosen primary (best NDCG + local-first,
+NFR-3); Titan v2 is not offered in ap-southeast-1 and is recorded as unavailable.
