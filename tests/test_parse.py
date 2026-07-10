@@ -133,3 +133,61 @@ def test_abbrev_district_resolves_anchor_and_district(parser):
     assert intent.anchor is not None
     assert intent.anchor.lat == pytest.approx(10.77, abs=0.05)  # Quận 1 centroid
     assert intent.district is not None
+
+
+# --- Batch C (C3): coordinate-in-query anchors (SPEC §7.1; PRD FR-2) ---
+
+def test_coordinate_query_sets_anchor(parser):
+    intent = parser.parse("10.7738, 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+    # the '.'-shattered integer shards ('10','7738',...) must not pollute the residual
+    assert intent.content_terms == []
+    assert not intent.has_residual
+    assert intent.residual_terms == []
+
+
+def test_coordinate_space_separated_parses(parser):
+    intent = parser.parse("gần 10.7738 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+
+
+def test_coordinate_swapped_order_parses(parser):
+    intent = parser.parse("106.704, 10.7738")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+
+
+def test_coordinate_with_category_parses_both(parser):
+    intent = parser.parse("quán cà phê 10.7738,106.704")
+    assert intent.category == "Quán cà phê"
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert not intent.content_terms  # coordinate shards are not subjects
+
+
+def test_out_of_bounds_coordinate_leaves_anchor_none(parser):
+    intent = parser.parse("50.0, 8.0")
+    assert intent.anchor is None
+
+
+def test_rating_decimal_is_not_a_coordinate(parser):
+    intent = parser.parse("cà phê 3.5 sao")
+    assert intent.anchor is None
+
+
+def test_24_7_is_not_a_coordinate(parser):
+    intent = parser.parse("cây xăng 24/7 gần đây")
+    assert intent.anchor is None
+
+
+def test_coordinate_takes_precedence_over_gazetteer(parser):
+    # an explicit coordinate (HCMC, lat ~10.77) wins over a landmark name (Hồ Gươm,
+    # Hà Nội, lat ~21.03) that also appears in the query.
+    intent = parser.parse("cafe gần hồ gươm 10.7738, 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)

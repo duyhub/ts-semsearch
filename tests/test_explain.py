@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from semsearch.data import POI, Anchor, QueryIntent
 from semsearch.explain import generate_reasons, validate_reasons
+from semsearch.geo import COORD_ANCHOR_NAME
 
 
 def _poi(**kw) -> POI:
@@ -69,3 +70,15 @@ def test_out_of_district_reason_still_uses_cach():
     poi = _poi(district="Quận 3", lat=10.83, lon=106.68)
     reasons = generate_reasons(intent, poi)
     assert any(r.startswith("cách Quận 1") for r in reasons)
+
+
+# --- Batch C (C3): coordinate anchor distance reason reads naturally ---
+
+def test_coordinate_anchor_distance_reason_reads_naturally():
+    # 'cách vị trí đã chọn 450 m' — an honest, natural-reading distance reason.
+    intent = QueryIntent(raw="", normalized="",
+                         anchor=Anchor(COORD_ANCHOR_NAME, 10.7738, 106.704))
+    poi = _poi(lat=10.7750, lon=106.7000)  # ~0.5 km from the coordinate
+    reasons = generate_reasons(intent, poi)
+    assert any(r.startswith(f"cách {COORD_ANCHOR_NAME}") for r in reasons)
+    assert validate_reasons(reasons, poi) == []
