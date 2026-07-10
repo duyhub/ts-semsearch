@@ -33,11 +33,12 @@ NEUTRAL = 0.5
 # Committed reference time for eval (A1): deterministic, so open_now can't drift.
 DEFAULT_EVAL_NOW = datetime(2026, 7, 11, 14, 0)  # 14:00, Asia/Ho_Chi_Minh assumed
 
-# Default weights (pre-tuning). tune.py overwrites the 8 tunable signals in
-# data/weights.json; `price` is a DELIBERATE FIXED preference weight (not eval-tuned —
-# only 2/60 eval queries express price, too few to inform it; NFR-6). weights.json has
-# no `price` key, so load_weights() supplies it here via its per-key fallback, leaving
-# the proven tuned weights untouched.
+# Default weights (pre-tuning). tune.py tunes only its TUNABLE set — the 8 signals
+# except `price` — and writes exactly those 8 keys to data/weights.json. `price` is a
+# DELIBERATE FIXED preference weight (never eval-tuned — only 2/60 eval queries express
+# price, too few to inform it; NFR-6), so it never enters the tuner and weights.json
+# has no `price` key. load_weights() re-supplies it here via its per-key fallback,
+# leaving the proven tuned weights untouched.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "semantic": 0.30, "attributes": 0.25, "category": 0.20, "distance": 0.10,
     "rating": 0.10, "popularity": 0.05, "open_now": 0.10, "review": 0.10,

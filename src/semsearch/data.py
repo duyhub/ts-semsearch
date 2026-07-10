@@ -158,7 +158,9 @@ def load_pois(path: str | Path = DEFAULT_XLSX) -> list[POI]:
                 opening_hours=_opt_str(row.get("opening_hours")),
                 attributes=_split(row.get("attributes"), ";"),
                 tags=_split(row.get("tags"), ";"),
-                description=str(row.get("description") or "").strip(),
+                # _opt_str returns None on NaN/blank (a blank xlsx cell is float('nan'),
+                # which is truthy — `or ""` would yield the literal 'nan'); coerce to ''.
+                description=_opt_str(row.get("description")) or "",
             )
         )
     return pois

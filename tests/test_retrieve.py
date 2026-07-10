@@ -59,6 +59,27 @@ def test_load_doc_matrix_refuses_provider_mismatch(tmp_path, monkeypatch):
         E.load_doc_matrix(local, poi_ids)
 
 
+def test_load_doc_matrix_refuses_poi_order_mismatch(tmp_path, monkeypatch):
+    """A cached matrix whose manifest lists different POI ids/order than the current
+    dataset must be refused, not silently used against the wrong rows (A2/C24)."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    local = E.LocalEmbedder()  # no model load; load_doc_matrix never calls embed
+
+    # matrix + manifest are self-consistent (right provider/model) but stamped with a
+    # DIFFERENT POI id set than the caller asks for.
+    np.save(E._matrix_path(local), np.zeros((2, 1024), dtype=np.float32))
+    import json
+    with open(E._manifest_path(local), "w", encoding="utf-8") as fh:
+        json.dump(
+            {"provider": local.provider, "model_id": local.model_id,
+             "dim": 1024, "n_docs": 2, "poi_ids": ["C001", "C002"]},
+            fh,
+        )
+
+    with pytest.raises(ValueError, match="POI order"):
+        E.load_doc_matrix(local, ["C001", "C999"])  # C999 != cached C002
+
+
 def test_load_doc_matrix_missing_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):

@@ -70,7 +70,9 @@ def make_full_ranker(pois: Sequence[POI], *, weights=None, now=None, provider: s
     from .pipeline import FullPipeline
     from .rank import load_weights
 
-    pipe = FullPipeline(pois, weights=weights or load_weights(), now=now, provider=provider)
+    # weights is None -> use the tuned weights; an explicit {} is honored, not swapped (C23).
+    pipe = FullPipeline(pois, weights=weights if weights is not None else load_weights(),
+                        now=now, provider=provider)
 
     def rank(q) -> list[str]:
         return pipe.rank_ids(q.input_query)

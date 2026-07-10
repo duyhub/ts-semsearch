@@ -13,7 +13,13 @@ import pytest
 from semsearch.data import load_eval
 from semsearch.split import make_split
 
-SRC = Path(__file__).resolve().parents[1] / "src" / "semsearch"
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src" / "semsearch"
+
+# Everything that ships and could leak eval text: the library, the scripts (incl. the
+# sample-query showcase), and the demo UI (its CHIPS array). Illustrative demo queries
+# are allowed — but must NOT be verbatim eval-query text (reword ours if they collide).
+SCANNED = list(SRC.rglob("*.py")) + list((ROOT / "scripts").glob("*.py")) + [ROOT / "ui" / "index.html"]
 
 
 @pytest.fixture(scope="module")
@@ -23,13 +29,14 @@ def queries():
 
 @pytest.fixture(scope="module")
 def source_text():
-    return "\n".join(p.read_text(encoding="utf-8") for p in SRC.rglob("*.py"))
+    return "\n".join(p.read_text(encoding="utf-8") for p in SCANNED if p.exists())
 
 
 def test_no_query_text_hardcoded_in_src(queries, source_text):
-    """No eval query's raw text is embedded in source (would signal query-specific code)."""
+    """No eval query's raw text is embedded in shipped code/UI (would signal query-specific
+    code, or an illustrative demo query accidentally reusing eval text verbatim)."""
     offenders = [q.query_id for q in queries if q.input_query and q.input_query in source_text]
-    assert not offenders, f"eval query text hardcoded in src/: {offenders}"
+    assert not offenders, f"eval query text hardcoded in src/scripts/ui: {offenders}"
 
 
 def test_no_expected_id_mapping_hardcoded_in_src(queries, source_text):
@@ -40,7 +47,7 @@ def test_no_expected_id_mapping_hardcoded_in_src(queries, source_text):
             joined = ";".join(q.expected_ids)
             if joined in source_text:
                 offenders.append(q.query_id)
-    assert not offenders, f"expected poi-id mapping hardcoded in src/: {offenders}"
+    assert not offenders, f"expected poi-id mapping hardcoded in src/scripts/ui: {offenders}"
 
 
 def test_tune_test_never_overlap(queries):
