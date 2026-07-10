@@ -76,9 +76,13 @@ cold and warm p95 separately.
 
 - Python 3.11, managed with [uv](https://github.com/astral-sh/uv). No Node required —
   the demo UI is a lean single-page app served by the API itself.
-- Optional: AWS Bedrock credentials — Bedrock is a *selectable, measured* embedding/LLM
-  provider (Built-with-AWS eligibility), **not** required to run. Local `bge-m3` + the
-  rule parser are the default and the path the demo runs on.
+- AWS Bedrock is a **planned/roadmap** embedding + LLM provider
+  (`cohere.embed-multilingual-v3` / Titan v2, Claude for parsing) for Built-with-AWS
+  eligibility. The provider-switch scaffolding and provider-stamped caches are in place, but
+  **only local `bge-m3` is implemented today** — selecting a Bedrock provider raises a clear
+  "not wired yet" error (`reports/embedding-choice.md` records it as skipped). Local `bge-m3`
+  + the rule parser are the default and the only path the demo runs on; **no AWS credentials
+  required**.
 
 ## Setup
 
@@ -110,7 +114,7 @@ uv run uvicorn semsearch.api:create_app --factory --port 8000
 ## Verify
 
 ```bash
-uv run python -m pytest -q               # 94 tests
+uv run python -m pytest -q               # full suite
 uv run python scripts/robustness.py      # G5 sweep (60 eval + adversarial)
 uv run python scripts/bench_latency.py   # G4 cold vs warm p95
 uv run python scripts/sample_queries.py  # -> reports/sample-queries.md

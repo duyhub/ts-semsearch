@@ -37,7 +37,8 @@ sponsor's published API contract exactly ("integration-ready" is an explicit jud
 | `docs/Q&A.md` | Organizer answers to our team's questions: the **five official judging dimensions** (IR metrics optional — our edge), hidden evaluation scenarios, public-data enrichment allowed, response JSON recommended-not-mandatory |
 | `docs/tasco_api.pdf` | **Tasco's API contract we must match**: `/v1/search` params, `PlaceResult` DTO (stable ids, WGS84, diacritics preserved), auth headers, error codes, mock-server notes, submission expectations (OpenAPI spec, client adapter, latency/fallback notes) |
 | `data/raw/ai_maps_track2_dataset_participants.xlsx` | Official dataset, 5 sheets: `README`; `POI_Dataset` (111 Vietnamese POIs: name, brand, category, city/district, lat/lon, rating, review_count, popularity, price, hours, `;`-separated attributes, tags, description); `Attribute_Taxonomy` (10 attrs with semantic meanings — canonical vocab for constraint matching); `Ranking_Signals` (7 signals the sponsor expects); `Public_Evaluation` (**60 labeled queries**: expected top POI ids, category, difficulty, skills_tested — our metric ground truth) |
-| `data/derived/` | Generated (gitignored): pois.parquet, eval split, embeddings cache |
+| `data/eval_split.json` | Committed stratified 40/20 tune/test split (NFR-6/7); reproducible from a fresh clone |
+| `data/derived/` | Generated (gitignored): pois.parquet, embeddings cache, query-embed cache |
 | `reports/` | Generated metrics, ablation, sample-query artifacts (committed; script-generated only) |
 
 ## Further research pointers

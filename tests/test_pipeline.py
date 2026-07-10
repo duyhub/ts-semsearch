@@ -5,11 +5,15 @@ import pytest
 
 from semsearch.data import QueryIntent, content_tokens, load_pois
 from semsearch.pipeline import FullPipeline
+from semsearch.rank import load_weights
 
 
 @pytest.fixture(scope="module")
 def pipe():
-    return FullPipeline(load_pois())
+    # Serve the TUNED weights (load_weights) — the exact config the live API runs, so
+    # these behavioural tests validate what the demo actually serves (C6), not the
+    # untuned DEFAULT_WEIGHTS.
+    return FullPipeline(load_pois(), weights=load_weights())
 
 
 def test_anchor_gate_keeps_near_anchor_on_top(pipe):
@@ -39,7 +43,7 @@ def test_category_word_dominates_lineup(pipe):
     # "quán cà phê" + a District-1 location must return coffee shops, not the
     # malls / gas stations / restaurants that share the location tokens
     # ("quan 1 tp hcm"). Before the category signal, non-cafés interleaved the
-    # top-3 (mall #2, gas station #5). Runs under DEFAULT_WEIGHTS (the API path).
+    # top-3 (mall #2, gas station #5). Runs under the tuned load_weights() — the live API path.
     _, results = pipe.search("quan ca phe o q1 tphcm", k=5)
     assert results
     assert results[0].poi.category == "Quán cà phê"

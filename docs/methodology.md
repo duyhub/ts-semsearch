@@ -106,10 +106,12 @@ full re-rank **0.959** (NDCG@5) — each stage adds value.
 
 ## Models & provider posture
 
-Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary provider — the
-build, tuning, and gates all run against it, so the demo has no hard network
-dependency (NFR-3). Amazon Bedrock (`cohere.embed-multilingual-v3` / Titan v2,
-Claude for LLM parsing) is a **selectable, measured** provider for
-Built-with-AWS eligibility, never the default. Provider comparison lives in
-`reports/embedding-choice.md`; caches are provider-stamped so a switch can never
-silently mix vector spaces.
+Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary — and today the only
+**implemented** — provider: the build, tuning, and gates all run against it, so the demo
+has no hard network dependency (NFR-3). Amazon Bedrock (`cohere.embed-multilingual-v3` /
+Titan v2, Claude for LLM parsing) is a **planned/roadmap** provider for Built-with-AWS
+eligibility: the provider-switch scaffolding (a model-id registry and provider-stamped
+caches, so a switch can never silently mix vector spaces) is in place, but the Bedrock
+client itself is not yet wired — selecting it raises a clear "not wired yet" error, and
+`reports/embedding-choice.md` accordingly records the Bedrock rows as **skipped** (only
+`local` is measured). It is never the default, and never required to run.

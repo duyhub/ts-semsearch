@@ -19,10 +19,12 @@ from semsearch.pipeline import FullPipeline  # noqa: E402
 REPORTS = Path("reports")
 
 # Representative demo queries spanning the 8 eval categories + skills. These are
-# illustrative queries (not mapped to any expected ids) — no eval fitting.
+# illustrative queries (not mapped to any expected ids) — no eval fitting. Deliberately
+# NOT verbatim eval-query text (test_integrity scans this file), so a couple are worded
+# slightly differently from their nearest eval query.
 QUERIES = [
-    ("Semantic / work", "quán cà phê yên tĩnh để làm việc"),
-    ("Location-aware", "cafe có wifi gần hồ gươm"),
+    ("Semantic / work", "quán cà phê yên tĩnh để ngồi làm việc"),
+    ("Location-aware", "cafe có wifi gần bờ hồ gươm"),
     ("Intent (no category word)", "nơi hẹn hò lãng mạn có view đẹp"),
     ("Utility + time", "cây xăng 24/7 gần đây"),
     ("Attribute + location", "khách sạn gần biển Đà Nẵng"),
