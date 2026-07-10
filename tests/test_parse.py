@@ -89,6 +89,40 @@ def test_no_price_word_leaves_pref_none(parser):
     assert parser.parse("cafe yên tĩnh để làm việc").price_pref is None
 
 
+def test_price_sang_not_fired_by_morning_sang(parser):
+    # 'sáng' (morning) must NOT parse as expensive; the price key 'sang' is luxury.
+    intent = parser.parse("quán ăn sáng")
+    assert intent.price_pref is None
+
+
+def test_category_park_not_fired_by_parking(parser):
+    # 'parking' must not trip the 'park' -> Công viên keyword.
+    intent = parser.parse("nhà hàng có chỗ parking")
+    assert intent.category != "Công viên"
+
+
+def test_tra_sua_maps_to_cafe(parser):
+    assert parser.parse("trà sữa ngon").category == "Quán cà phê"
+
+
+def test_bare_tra_does_not_misfire_on_son_tra(parser):
+    # 'sơn trà' (a district) must not trigger the drink category.
+    assert parser.parse("quán ngon sơn trà").category != "Quán cà phê"
+
+
+def test_superlative_nhat_not_a_subject(parser):
+    # 'nhất' is a common superlative particle -> not a distinctive subject/residual.
+    intent = parser.parse("địa điểm nổi tiếng nhất")
+    assert "nhat" not in intent.content_terms
+    assert "nhat" not in intent.residual_terms
+
+
+def test_food_subject_survives_common_word_filter(parser):
+    # 'chả' folds to 'cha' but is not the common word 'cha' -> stays a subject.
+    intent = parser.parse("quán bún chả cho khách du lịch")
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+
+
 def test_abbrev_district_resolves_anchor_and_district(parser):
     # "q1 tphcm" (abbreviated) must resolve to the Quận 1 district anchor and
     # populate intent.district — previously the folded "q1" never matched the

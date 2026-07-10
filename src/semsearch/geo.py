@@ -13,7 +13,7 @@ from collections import defaultdict
 from typing import Sequence
 
 from .data import POI, Anchor
-from .normalize import contains_token_seq, fold
+from .normalize import compat_token_seq, fold, token_key_matches
 
 EARTH_KM = 6371.0
 
@@ -60,16 +60,25 @@ class Gazetteer:
         }
         self.poi_names = {fold(p.name): (p.lat, p.lon, p.name) for p in pois}
 
-    def resolve(self, folded_text: str) -> Anchor | None:
-        """Best-effort anchor from an already-folded query fragment (name keeps diacritics)."""
-        for key, (lat, lon, disp) in self.landmarks.items():
-            if key in folded_text:
+    def resolve(self, folded_text: str, raw_text: str | None = None) -> Anchor | None:
+        """Best-effort anchor from a folded query fragment plus the RAW query.
+
+        Matching is diacritic-compatible and token-boundary (Fix 1): landmark and
+        POI-name keys are checked against the raw query directly, while district
+        keys are checked against the (possibly abbreviation-expanded) folded
+        haystack — so 'q1' -> 'quan 1' still resolves — but rejected if the raw
+        query spells a conflicting diacritic. ``raw_text`` defaults to
+        ``folded_text`` for callers that only hold folded input (already
+        diacritic-free, hence permissive). Names keep their diacritics.
+        """
+        raw = folded_text if raw_text is None else raw_text
+        for _key, (lat, lon, disp) in self.landmarks.items():
+            if compat_token_seq(raw, disp):
                 return Anchor(name=disp, lat=lat, lon=lon)
-        for key, (lat, lon, disp) in self.districts.items():
-            # token-boundary match: "quan 1" must not fire inside "quan 10/11/12"
-            if contains_token_seq(folded_text, key):
+        for _key, (lat, lon, disp) in self.districts.items():
+            if token_key_matches(folded_text, raw, disp):
                 return Anchor(name=disp, lat=lat, lon=lon)
-        for key, (lat, lon, disp) in self.poi_names.items():
-            if key and key in folded_text:
+        for _key, (lat, lon, disp) in self.poi_names.items():
+            if disp and compat_token_seq(raw, disp):
                 return Anchor(name=disp, lat=lat, lon=lon)
         return None
