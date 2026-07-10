@@ -31,7 +31,7 @@ Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart
 | G1 | BM25 Recall@5 (tune) | 0.917 | ≥ 0.55 |
 | G2 | hybrid NDCG@5 > max(bm25, dense) (tune) | 0.922 > 0.881 | > |
 | G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.963 / 0.983** | ≥ 0.80 / ≥ 0.75 |
-| G4 | warm p95 latency | 1.1 ms | < 200 ms |
+| G4 | warm p95 latency | 9.2 ms | < 200 ms |
 | G5 | robustness (60 eval + adversarial) | 138/138 | 0 failures |
 
 Reproduce: `uv run python scripts/report_metrics.py` → [`reports/metrics.md`](reports/metrics.md).
