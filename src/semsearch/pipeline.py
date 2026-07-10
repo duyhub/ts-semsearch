@@ -13,6 +13,7 @@ the API layer applies the top-N + popularity backstop for out-of-vocab inputs.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Sequence
 
@@ -86,21 +87,42 @@ class FullPipeline:
 
         When `trace` is a dict, it is populated with a deterministic, structural summary of
         the pipeline's decisions (retrieval tops, which constraints engaged/relaxed, whether
-        the anchor gate fired) for the read-only /admin transparency view. It adds one dict
-        write per stage and NO extra retrieval; when `trace` is None the path is unchanged."""
-        intent = self.parser.parse(query_text)
-        dense_ids = [pid for pid, _ in self.dense.search(query_text)]  # one dense pass, reused below
-        rel = self._relevance(query_text, intent, dense_ids, trace=trace)
-        out: list[tuple[str, float, dict[str, float]]] = []
-        for p in self.pois:
-            s, b = self.ranker.score(
-                rel.get(p.poi_id, 0.0), intent, p, self._attrs[p.poi_id], self._review[p.poi_id]
-            )
-            out.append((p.poi_id, s, b))
-        out.sort(key=lambda t: t[1], reverse=True)
-        out = self._constraint_filter(out, intent, dense_ids, trace=trace)
+        the anchor gate fired) PLUS a `steps` list timing each stage — the per-request
+        execution trace the /admin view renders. Timing wraps whole stages (never per-POI),
+        so the cost is a handful of perf_counter() calls; when `trace` is None the path is
+        byte-for-byte unchanged (the contract /v1/search never pays for it)."""
+        steps = trace.setdefault("steps", []) if trace is not None else None
+
+        def _timed(name, fn):
+            """Run fn(), and if tracing, record {name, ms} for this stage."""
+            if steps is None:
+                return fn()
+            t0 = time.perf_counter()
+            result = fn()
+            steps.append({"name": name, "ms": round((time.perf_counter() - t0) * 1000, 3)})
+            return result
+
+        intent = _timed("parse", lambda: self.parser.parse(query_text))
+        dense_ids = _timed("dense_retrieval",
+                           lambda: [pid for pid, _ in self.dense.search(query_text)])
+        rel = _timed("lexical_fusion",
+                     lambda: self._relevance(query_text, intent, dense_ids, trace=trace))
+
+        def _score_all():
+            out: list[tuple[str, float, dict[str, float]]] = []
+            for p in self.pois:
+                s, b = self.ranker.score(
+                    rel.get(p.poi_id, 0.0), intent, p, self._attrs[p.poi_id], self._review[p.poi_id]
+                )
+                out.append((p.poi_id, s, b))
+            out.sort(key=lambda t: t[1], reverse=True)
+            return out
+
+        out = _timed("rank_signals", _score_all)
+        out = _timed("constraint_filter",
+                     lambda: self._constraint_filter(out, intent, dense_ids, trace=trace))
         if intent.anchor is not None:
-            gated = self._anchor_gate(out, intent)
+            gated = _timed("anchor_gate", lambda: self._anchor_gate(out, intent))
             if trace is not None:
                 trace["anchorGateFired"] = gated is not out  # a new list ⇒ gate reordered
             out = gated

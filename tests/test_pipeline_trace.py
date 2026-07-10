@@ -29,11 +29,29 @@ def test_semantic_search_exposes_trace():
     assert "location" in tr["constraintsEngaged"]
 
 
-def test_trace_is_deterministic():
+def _structural(trace: dict) -> dict:
+    # everything except wall-clock timings, which legitimately vary run to run
+    return {k: v for k, v in trace.items() if k not in ("steps", "totalMs")}
+
+
+def test_trace_structure_is_deterministic():
     params = {"q": "nơi hẹn hò lãng mạn"}
     a = client.get("/v1/semantic-search", params=params).json()["trace"]
     b = client.get("/v1/semantic-search", params=params).json()["trace"]
-    assert a == b  # identical request → identical trace (NFR-5)
+    assert _structural(a) == _structural(b)  # decisions identical (NFR-5)
+    # step SEQUENCE is deterministic too; only the per-step ms differs
+    assert [s["name"] for s in a["steps"]] == [s["name"] for s in b["steps"]]
+
+
+def test_trace_reports_per_step_latency():
+    d = client.get("/v1/semantic-search", params={"q": "quán cà phê yên tĩnh"}).json()
+    steps = d["trace"]["steps"]
+    names = [s["name"] for s in steps]
+    # the core pipeline stages are timed, in execution order
+    assert names[:4] == ["parse", "dense_retrieval", "lexical_fusion", "rank_signals"]
+    assert "explain_serialize" in names
+    assert all(isinstance(s["ms"], (int, float)) and s["ms"] >= 0 for s in steps)
+    assert d["trace"]["totalMs"] >= 0
 
 
 def test_contract_search_never_carries_trace():

@@ -102,6 +102,17 @@
   .tstep code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--ink-dim)}
   .tstep.warn{background:var(--accent-tint); border-color:#e6cf9a; color:var(--accent-ink)}
 
+  /* per-step execution timeline (latency of each pipeline stage) */
+  .steps{padding:4px 18px 14px}
+  .steps-hd{font-size:12.5px; font-weight:600; color:var(--ink-dim); margin:0 0 8px}
+  .steps-hd .tot{color:var(--primary-deep); font-variant-numeric:tabular-nums}
+  .srow{display:grid; grid-template-columns:190px 1fr 74px; align-items:center; gap:10px; margin-bottom:6px}
+  .srow .snm{font-size:13px; font-weight:500}
+  .strack{height:14px; background:var(--surface-2); border:1px solid var(--line); border-radius:6px; overflow:hidden}
+  .sfill{height:100%; background:var(--primary); border-radius:6px 0 0 6px; min-width:2px}
+  .sms{text-align:right; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink); font-weight:600}
+  .sms .u{color:var(--ink-mute); font-weight:400; font-size:11px}
+
   .res{border-top:1px solid var(--line); padding:14px 18px}
   .res .top{display:flex; gap:11px; align-items:baseline}
   .rank{flex:none; width:26px; height:26px; border-radius:8px; background:var(--primary-tint); color:var(--primary-deep);
@@ -221,6 +232,24 @@ function resCard(r, i, weights){
     ${sigTable(r, weights)}
   </div>`;
 }
+const STEP_LABEL = {
+  parse:"Phân tích ý định", dense_retrieval:"Truy hồi vector (dense)", lexical_fusion:"BM25 + hợp nhất RRF",
+  rank_signals:"Xếp hạng 9 tín hiệu", constraint_filter:"Lọc ràng buộc", anchor_gate:"Ưu tiên điểm neo",
+  candidate_filter:"Lọc ứng viên (API)", explain_serialize:"Sinh giải thích + đóng gói"};
+// per-step execution timeline: every pipeline stage with its measured latency this request
+function stepsTimeline(t){
+  const steps = (t && t.steps) || []; if(!steps.length) return '';
+  const maxMs = Math.max(...steps.map(s=>s.ms), 0.001);
+  const total = t.totalMs != null ? t.totalMs : steps.reduce((a,s)=>a+s.ms,0);
+  const rows = steps.map(s=>{
+    const pct = Math.max(2, Math.round((s.ms/maxMs)*100));
+    return `<div class="srow"><span class="snm">${esc(STEP_LABEL[s.name]||s.name)}</span>`+
+      `<span class="strack"><span class="sfill" style="width:${pct}%"></span></span>`+
+      `<span class="sms">${s.ms.toFixed(2)}<span class="u"> ms</span></span></div>`;
+  }).join('');
+  return `<div class="steps"><p class="steps-hd">Các bước pipeline · độ trễ mỗi bước — tổng
+    <span class="tot">${Number(total).toFixed(2)} ms</span></p>${rows}</div>`;
+}
 // structural pipeline trace: retrieval → constraints → gate → fallback
 function traceStrip(t){
   if(!t || !Object.keys(t).length) return '';
@@ -251,7 +280,7 @@ async function analyze(q){
       <span class="q">Truy vấn: <b>${esc(q)}</b></span>
       <span>${intentPills(d.intent||{})}</span>
       <span class="latency"><span class="bolt"></span>${Number(took).toFixed(1)} ms</span></div>`
-      + traceStrip(d.trace);
+      + stepsTimeline(d.trace) + traceStrip(d.trace);
     if(!results.length){ $('trace').innerHTML = head + `<div class="state">Không có kết quả.</div>`; }
     else { $('trace').innerHTML = head + results.map((r,i)=>resCard(r,i,weights)).join(''); }
   }catch(e){

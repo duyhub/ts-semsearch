@@ -183,6 +183,7 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
         else:
             ranked = pipeline.rank_scored(q, trace=trace)  # full corpus, (id, score, breakdown)
+        _tf = time.perf_counter()
         picked = []
         for pid, score, breakdown in ranked:
             poi = pipeline.by_id[pid]
@@ -195,6 +196,9 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             picked.append((poi, score, breakdown))
             if len(picked) >= limit:
                 break
+        if trace is not None:
+            trace["steps"].append({"name": "candidate_filter",
+                                   "ms": round((time.perf_counter() - _tf) * 1000, 3)})
         source = "semsearch"
         fallback = not picked
         if fallback:  # C1 backstop: valid query never returns empty
@@ -318,7 +322,7 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         t0 = time.perf_counter()
         intent, picked, source, trace = _rank_filtered(q, limit=limit, category=category, ref=ref,
                                                         radius=radius, bbox=box, collect_trace=True)
-        took = (time.perf_counter() - t0) * 1000
+        _te = time.perf_counter()
         results = [
             SemanticPlaceResult(**_place(p, s, ref, source).model_dump(),
                                 breakdown={k: round(v, 4) for k, v in b.items()},
@@ -331,6 +335,10 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
                                     district=p.district, city=p.city))
             for p, s, b in picked
         ]
+        trace.setdefault("steps", []).append(
+            {"name": "explain_serialize", "ms": round((time.perf_counter() - _te) * 1000, 3)})
+        took = (time.perf_counter() - t0) * 1000
+        trace["totalMs"] = round(took, 3)  # end-to-end; ≈ Σ steps
         anchor = ({"name": intent.anchor.name, "lat": intent.anchor.lat, "lon": intent.anchor.lon}
                   if intent.anchor else None)
         echo = IntentEcho(category=intent.category, requiredAttrs=intent.required_attrs,
@@ -339,8 +347,9 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
                                       meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)),
                                       weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()},
                                       trace=trace)
-        log.info("semantic-search q=%r results=%d source=%s tookMs=%.1f trace=%s",
-                 q, len(results), source, took, trace)
+        steps_log = " ".join(f"{s['name']}={s['ms']}ms" for s in trace.get("steps", []))
+        log.info("semantic-search q=%r results=%d source=%s totalMs=%.1f | %s",
+                 q, len(results), source, took, steps_log)
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
     return app
