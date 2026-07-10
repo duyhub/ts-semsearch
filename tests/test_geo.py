@@ -38,3 +38,23 @@ def test_district_centroid_key_exists_for_quan_1(gaz):
     # Fix B relies on the gazetteer holding a folded "quan 1" district centroid
     # so an expanded "q1" -> "quan 1" resolves to it.
     assert "quan 1" in gaz.districts
+
+
+# --- Fix 1: diacritic-compatible landmark resolution ---
+
+def test_landmark_no_false_fire_on_pho_co(gaz):
+    # 'phở có chỗ ...' must NOT anchor to Phố Cổ (Hanoi) for a phở query.
+    assert gaz.resolve("quan pho co cho ngoi ngoai troi",
+                       "quán phở có chỗ ngồi ngoài trời") is None
+
+
+def test_landmark_pho_co_diacritic_forms(gaz):
+    # exact 'phố cổ' anchors; 'phở cổ' does not (ở ≠ ố); unaccented 'pho co' does.
+    assert gaz.resolve("pho co", "phố cổ") is not None
+    assert gaz.resolve("pho co", "phở cổ") is None
+    a = gaz.resolve("cafe gan pho co", "cafe gan pho co")
+    assert a is not None and a.name == "Phố Cổ"
+
+
+def test_landmark_ho_tay_not_in_cho_tay(gaz):
+    assert gaz.resolve("tim cho tay ba lo", "tìm chỗ tây ba lô") is None

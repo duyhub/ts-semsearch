@@ -110,13 +110,21 @@ class FullPipeline:
         (only when the parse is fully explained). Returns MATCHES ONLY (may be fewer
         than the limit); relaxes the most-specific constraint first until non-empty (G5).
 
-        The subject filter fires only for DENSE-corroborated terms; a distinctive term
-        the dense retriever discredits (a coincidental proper-name collision like "nhat"
-        in "Thống Nhất") is dropped, and — since it never described a real subject — it
-        no longer blocks the category filter either. Genuine unexplained content (e.g.
-        P055's "mua/sắm") still blocks category, preserving the mis-parse guard."""
-        subject_terms = self._corroborated_subjects(intent, dense_ids)
-        discredited = set(intent.content_terms) - subject_terms  # spurious distinctive terms
+        The subject filter is ALL-OR-NOTHING (C7): it fires only when EVERY distinctive
+        content term is DENSE-corroborated (some POI carrying it sits in the dense top-K).
+        If only a subset corroborates, the whole subject filter is dropped — otherwise the
+        surviving subset admits wrong POIs (e.g. 'hue' from an unrelated ATM in a
+        'highlands coffee nguyễn huệ' search). When dropped, all content terms are treated
+        as discredited so they no longer block the category filter either; genuine
+        unexplained content (e.g. P055's "mua/sắm") still blocks category, preserving the
+        mis-parse guard."""
+        corroborated = self._corroborated_subjects(intent, dense_ids)
+        if intent.content_terms and corroborated == set(intent.content_terms):
+            subject_terms = corroborated
+            discredited: set[str] = set()
+        else:  # partial (or no) corroboration -> no subject filter; nothing blocks category
+            subject_terms = set()
+            discredited = set(intent.content_terms)
         meaningful_residual = [t for t in intent.residual_terms if t not in discredited]
 
         filters = []

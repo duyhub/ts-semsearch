@@ -18,7 +18,13 @@ from .normalize import doc_tokens, expand_query
 
 
 def lexical_doc(p: POI) -> str:
-    """Fields BM25 indexes (SPEC §5): name/brand/category/address/attributes/tags + context."""
+    """Fields BM25 indexes (SPEC §5): name/brand/category/address/attributes/tags + context.
+
+    NB (Fix 3): district/city are kept here. Dropping them to stop the 'trà' ~ 'Sơn Trà'
+    fold-collision regressed tune NDCG@5 0.959 -> 0.948 (location overlap genuinely helps
+    the eval), so the 'trà sữa' -> café fix is carried purely by the parser drink-category
+    curation (CATEGORY_KEYWORDS), which the category hard-filter then honors.
+    """
     parts = [
         p.name,
         p.brand or "",

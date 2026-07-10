@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from semsearch.data import content_tokens, load_pois
+from semsearch.data import QueryIntent, content_tokens, load_pois
 from semsearch.pipeline import FullPipeline
 
 
@@ -135,3 +135,51 @@ def test_impossible_strict_query_still_nonempty(pipe):
 
 def test_gibberish_still_nonempty(pipe):
     assert pipe.rank_ids("zzzz qwerty asdf")  # full-corpus ranking never empty
+
+
+# --- Fix 2 (C2): superlative discovery queries must not collapse to a single park ---
+
+def test_discovery_superlative_not_single_park(pipe):
+    _, results = pipe.search("địa điểm nổi tiếng nhất", k=10)
+    assert len(results) > 1
+
+
+def test_pretty_superlative_not_single_park(pipe):
+    _, results = pipe.search("chỗ nào đẹp nhất", k=10)
+    assert len(results) > 1
+
+
+# --- Fix 3 (C16): 'trà sữa' is a drink category, never an ATM / gas station ---
+
+def test_tra_sua_no_atm_or_gas_in_top3(pipe):
+    _, results = pipe.search("trà sữa", k=10)
+    top3 = results[:3]
+    assert any(r.poi.category == "Quán cà phê" for r in top3)
+    assert all(r.poi.category not in ("ATM", "Trạm xăng") for r in top3)
+
+
+# --- Fix 2 (C7): partial subject corroboration is all-or-nothing ---
+
+def test_partial_corroboration_drops_subject_filter(pipe):
+    # content_terms = {highlands, hue}; force a dense top-K that corroborates only
+    # 'hue' (via the unrelated ATM S001) and NOT 'highlands' (C002 absent). The old
+    # subset filter would pin results to {POIs containing 'hue'} (admitting the ATM);
+    # all-or-nothing must drop the subject filter entirely instead.
+    intent = QueryIntent(raw="", normalized="highlands hue",
+                         content_terms=["highlands", "hue"],
+                         residual_terms=["highlands", "hue"])
+    ranked = [(p.poi_id, 0.0, {}) for p in pipe.pois]
+    dense_ids = ["S001"] + [p.poi_id for p in pipe.pois if p.poi_id not in ("S001", "C002")]
+    kept = pipe._constraint_filter(ranked, intent, dense_ids)
+    assert len(kept) == len(pipe.pois)  # no subject filter applied (not all corroborated)
+
+
+def test_full_corroboration_still_filters(pipe):
+    # both content_terms corroborated (R003 has 'bun' and 'cha') -> subject filter fires.
+    intent = QueryIntent(raw="", normalized="bun cha",
+                         content_terms=["bun", "cha"],
+                         residual_terms=["bun", "cha"])
+    ranked = [(p.poi_id, 0.0, {}) for p in pipe.pois]
+    dense_ids = ["R003"] + [p.poi_id for p in pipe.pois if p.poi_id != "R003"]
+    kept = pipe._constraint_filter(ranked, intent, dense_ids)
+    assert all({"bun", "cha"} <= content_tokens(pipe.by_id[t[0]]) for t in kept)

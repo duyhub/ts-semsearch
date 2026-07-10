@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterable, Sequence
 
 # Abbreviation / slang dictionary — keys and values are FOLDED (see fold()).
@@ -59,6 +60,94 @@ def contains_token_seq(haystack_folded: str, key_folded: str) -> bool:
     if m == 0:
         return False
     return any(ht[i:i + m] == kt for i in range(len(ht) - m + 1))
+
+
+def _display_tokens(raw: str) -> list[str]:
+    """Diacritic-preserving tokens aligned 1:1 with ``fold(raw).split()``.
+
+    A character joins the current token iff it survives folding (letters, digits,
+    '/'); the string is NFC-normalized + lowercased first so each surviving display
+    char folds to exactly one folded char — guaranteeing ``display[i]`` folds to the
+    i-th folded token and that the two are equal length. Stray combining marks
+    attach to the current token (they fold away). This lets a matcher align the raw
+    query's diacritics against a key's display form character by character.
+    """
+    s = unicodedata.normalize("NFC", raw).lower()
+    tokens: list[str] = []
+    cur: list[str] = []
+    for ch in s:
+        if unicodedata.category(ch) == "Mn":  # combining mark: keep, folds to nothing
+            if cur:
+                cur.append(ch)
+            continue
+        if fold(ch):  # survives folding -> part of a token
+            cur.append(ch)
+        elif cur:  # separator -> flush
+            tokens.append("".join(cur))
+            cur = []
+    if cur:
+        tokens.append("".join(cur))
+    return tokens
+
+
+def _char_compatible(q_char: str, k_char: str) -> bool:
+    """A single aligned char is diacritic-compatible if the query char is plain
+    (equals its own folded form) or exactly matches the key's display char. A
+    diacritic-bearing query char must not contradict the key's char."""
+    return fold(q_char) == q_char or q_char == k_char
+
+
+def _span_compatible(raw_span: Sequence[str], key_span: Sequence[str]) -> bool:
+    for rt, kt in zip(raw_span, key_span):
+        if len(rt) != len(kt) or any(
+            not _char_compatible(rc, kc) for rc, kc in zip(rt, kt)
+        ):
+            return False
+    return True
+
+
+def compat_token_seq(raw_text: str, key_display: str) -> bool:
+    """True iff ``key_display``'s folded form appears as a contiguous token
+    subsequence of ``fold(raw_text)`` AND at least one such occurrence is
+    diacritic-COMPATIBLE with ``key_display`` (Fix 1).
+
+    Unaccented query input stays permissive — folding exists precisely so plain
+    input matches — but any diacritic the query DOES type must agree with the key:
+    'phở có' does NOT match key 'Phố Cổ' (ở≠ố) while 'pho co' and 'phố cổ' both do;
+    'sáng' does NOT match key 'sang' though plain 'sang' does. Token-boundary
+    matching also stops 'park' firing inside 'parking' or 'late' inside 'chocolate'.
+    """
+    key_fold = fold(key_display).split()
+    m = len(key_fold)
+    if m == 0:
+        return False
+    raw_disp = _display_tokens(raw_text)
+    raw_fold = [fold(t) for t in raw_disp]
+    key_disp = _display_tokens(key_display)
+    if len(key_disp) != m:  # defensive: key must tokenize to its folded length
+        key_disp = key_fold
+    for i in range(len(raw_fold) - m + 1):
+        if raw_fold[i:i + m] == key_fold and _span_compatible(raw_disp[i:i + m], key_disp):
+            return True
+    return False
+
+
+def token_key_matches(hay_folded: str, raw_text: str, key_display: str) -> bool:
+    """Keyword match against a (possibly abbreviation-expanded) folded haystack,
+    gated by diacritic compatibility with the RAW query (Fix 1).
+
+    The key must appear as a token subsequence of ``hay_folded`` — so 'q1' -> 'quan 1'
+    and 'cf' -> 'ca phe' expansions still resolve. If the key ALSO appears literally
+    in the raw query it must be diacritic-compatible there (rejects 'sáng' vs key
+    'sang'); if it only arose via expansion there is no raw diacritic to contradict,
+    so the match stands.
+    """
+    key_fold = fold(key_display)
+    if not contains_token_seq(hay_folded, key_fold):
+        return False
+    if not contains_token_seq(fold(raw_text), key_fold):
+        return True  # arrived via expansion; nothing in the raw query to contradict
+    return compat_token_seq(raw_text, key_display)
 
 
 def fold(s: str) -> str:
@@ -161,3 +250,45 @@ def _fold_cached(s: str) -> str:
 def doc_tokens(text: str) -> list[str]:
     """Tokenization for documents — fold only (docs are canonical, no expansion)."""
     return [t for t in _fold_cached(text).split(" ") if t]
+
+
+_RESOURCES = Path(__file__).resolve().parent / "resources"
+
+
+@lru_cache(maxsize=1)
+def _vi_common_by_fold() -> dict[str, tuple[str, ...]]:
+    """Map a folded token to the diacritic display forms of the Vietnamese common
+    words that fold to it (Fix 2). Vendored from stopwords-iso/stopwords-vi (MIT);
+    see resources/vi_common_words.txt. Diacritic-aware storage is what lets the
+    plain common word 'cha' (father/negation) coexist with the food subject 'chả'
+    without one masking the other."""
+    by_fold: dict[str, list[str]] = {}
+    with open(_RESOURCES / "vi_common_words.txt", encoding="utf-8") as fh:
+        for line in fh:
+            word = line.strip()
+            if not word or word.startswith("#"):
+                continue
+            key = fold(word)
+            if key:
+                by_fold.setdefault(key, []).append(unicodedata.normalize("NFC", word).lower())
+    return {k: tuple(v) for k, v in by_fold.items()}
+
+
+def query_common_tokens(text: str) -> set[str]:
+    """Folded query tokens that are Vietnamese common words (the vendored stopword
+    resource), matched DIACRITIC-COMPATIBLY against the raw query (Fix 2).
+
+    A flagged token can never be a distinctive subject and is dropped from the
+    parser's residual. Diacritic-aware: the superlative particle 'nhất' is flagged
+    (accented or plain 'nhat'), but the food subject 'chả' is NOT flagged by the
+    unrelated common word 'cha'. Only checks tokens that actually occur in the
+    query, so it stays cheap.
+    """
+    by_fold = _vi_common_by_fold()
+    out: set[str] = set()
+    for tok in set(fold(text).split()):
+        for disp in by_fold.get(tok, ()):
+            if compat_token_seq(text, disp):
+                out.add(tok)
+                break
+    return out
