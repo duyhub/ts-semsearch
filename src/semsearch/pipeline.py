@@ -77,7 +77,7 @@ class FullPipeline:
         drop = set(fold(intent.district).split()) if intent.district else None
         bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
         if trace is not None:
-            trace["bm25Top"] = bm25_ids[:5]
+            trace["bm25Top"] = [{"id": pid, "name": self.by_id[pid].name} for pid in bm25_ids[:5]]
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
 
@@ -129,7 +129,7 @@ class FullPipeline:
         elif trace is not None:
             trace["anchorGateFired"] = False
         if trace is not None:
-            trace["denseTop"] = dense_ids[:5]
+            trace["denseTop"] = [{"id": pid, "name": self.by_id[pid].name} for pid in dense_ids[:5]]
         return out
 
     def _corroborated_subjects(self, intent: QueryIntent, dense_ids: list[str]) -> set[str]:

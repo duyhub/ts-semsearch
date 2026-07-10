@@ -22,6 +22,9 @@ def test_semantic_search_exposes_trace():
     tr = d["trace"]
     assert _TRACE_KEYS <= set(tr)
     assert isinstance(tr["bm25Top"], list) and isinstance(tr["denseTop"], list)
+    # retrieval tops carry the readable place name alongside the id (not bare ids)
+    for entry in tr["bm25Top"] + tr["denseTop"]:
+        assert set(entry) >= {"id", "name"} and entry["name"]
     assert isinstance(tr["anchorGateFired"], bool)
     assert isinstance(tr["fallbackFired"], bool)
     # a district query engages the location constraint (the anchor gate only *reorders*

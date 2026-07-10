@@ -112,6 +112,26 @@
   .sfill{height:100%; background:var(--primary); border-radius:6px 0 0 6px; min-width:2px}
   .sms{text-align:right; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink); font-weight:600}
   .sms .u{color:var(--ink-mute); font-weight:400; font-size:11px}
+  /* expandable per-step detail: formula, I/O, this-request result */
+  .sitem{border-bottom:1px dashed var(--line)}
+  .sitem:last-child{border-bottom:none}
+  .srow{cursor:pointer; padding:5px 0} .srow:hover .snm{color:var(--primary-deep)}
+  .caret{display:inline-block; width:12px; color:var(--ink-mute); transition:transform .12s; font-size:10px}
+  .sitem.open .caret{transform:rotate(90deg)}
+  .sdetail{display:none; margin:2px 0 12px 0; padding:12px 14px; background:var(--surface-2);
+    border:1px solid var(--line); border-radius:var(--radius-sm)}
+  .sitem.open .sdetail{display:block}
+  .sdetail .d{font-size:13px; color:var(--ink-dim); margin:0 0 8px}
+  .sdetail .flabel{font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-mute); margin:8px 0 3px}
+  .sdetail .formula{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; line-height:1.6;
+    color:var(--ink); background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--primary);
+    border-radius:8px; padding:9px 11px; white-space:pre-wrap; overflow-x:auto}
+  .sdetail .io{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; color:var(--ink-dim)}
+  .sdetail .io b{color:var(--primary-deep)}
+  .sdetail .sresult{margin-top:8px; font-size:12.5px; color:var(--ink)}
+  .sdetail .sresult b{color:var(--ink)}
+  .sdetail .sresult code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; background:var(--surface); padding:1px 5px; border-radius:4px}
+  .steps-hint{font-size:11.5px; color:var(--ink-mute); margin:0 0 8px}
 
   .res{border-top:1px solid var(--line); padding:14px 18px}
   .res .top{display:flex; gap:11px; align-items:baseline}
@@ -143,8 +163,8 @@
   <!-- ===== Config: read-only signal weights ===== -->
   <section class="panel">
     <div class="panel-hd">
-      <h2>Cấu hình tín hiệu xếp hạng</h2>
-      <span class="sub">9 tín hiệu · điểm = Σ (trọng số × tín hiệu) / Σ trọng số</span>
+      <h2>Cấu hình tín hiệu xếp hạng · Ranking signals</h2>
+      <span class="sub">9 tín hiệu (signals) · điểm (score) = Σ (trọng số × tín hiệu) / Σ trọng số</span>
       <span class="ro-badge">read-only</span>
     </div>
     <div class="cfgnote">Trọng số được <b>tinh chỉnh trên tập tune</b> và <b>cố định (committed)</b> trong
@@ -156,8 +176,9 @@
   <!-- ===== Transparency: per-request pipeline trace ===== -->
   <section class="panel">
     <div class="panel-hd">
-      <h2>Xem pipeline tính điểm</h2>
-      <span class="sub">Nhập truy vấn — xem ý định, tín hiệu và mức đóng góp cho từng kết quả</span>
+      <h2>Xem pipeline tính điểm · How the pipeline scores a query</h2>
+      <span class="sub">Nhập truy vấn — xem ý định, tín hiệu và mức đóng góp cho từng kết quả
+        (enter a query — see intent, signals, and each result's contribution)</span>
     </div>
     <div class="searchrow">
       <label class="search">
@@ -166,13 +187,16 @@
       <button class="go" id="go">Phân tích</button>
     </div>
     <div class="chips" id="chips"></div>
-    <div id="trace"><div class="state">Nhập một truy vấn để xem pipeline “suy nghĩ”.</div></div>
+    <div id="trace"><div class="state">Nhập một truy vấn để xem pipeline “suy nghĩ”. · Enter a query to watch the pipeline think.</div></div>
   </section>
 </div>
 
 <script>
-const SIG_LABEL = {semantic:"Ngữ nghĩa", attributes:"Thuộc tính", category:"Danh mục", distance:"Khoảng cách",
-  rating:"Đánh giá", popularity:"Phổ biến", open_now:"Đang mở", review:"Tags/mô tả", price:"Giá"};
+// bilingual: Vietnamese label + English gloss, so non-Vietnamese judges can follow
+const SIG_LABEL = {semantic:"Ngữ nghĩa (Semantic)", attributes:"Thuộc tính (Attributes)",
+  category:"Danh mục (Category)", distance:"Khoảng cách (Distance)", rating:"Đánh giá (Rating)",
+  popularity:"Phổ biến (Popularity)", open_now:"Đang mở (Open now)", review:"Tags/mô tả (Review terms)",
+  price:"Giá (Price)"};
 const EXAMPLES = ["quán cà phê yên tĩnh để làm việc ở quận 1", "nơi hẹn hò lãng mạn", "quán ăn mở khuya gần Hồ Gươm", "cà phê giá rẻ cho sinh viên"];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const f2 = x => x>=1 ? '1.0' : Number(x).toFixed(2).replace(/^0/,'');
@@ -203,9 +227,9 @@ function intentPills(it){
   const p = [];
   if(it.category) p.push(`<span class="ipill">${esc(it.category)}</span>`);
   (it.requiredAttrs||[]).forEach(a=>p.push(`<span class="ipill">${esc(a)}</span>`));
-  if(it.anchor?.name) p.push(`<span class="ipill loc">gần ${esc(it.anchor.name)}</span>`);
+  if(it.anchor?.name) p.push(`<span class="ipill loc">gần / near ${esc(it.anchor.name)}</span>`);
   if(it.city) p.push(`<span class="ipill loc">${esc(it.city)}</span>`);
-  if(it.openAfter) p.push(`<span class="ipill">mở sau ${esc(it.openAfter)}</span>`);
+  if(it.openAfter) p.push(`<span class="ipill">mở sau / open after ${esc(it.openAfter)}</span>`);
   return p.join(' ');
 }
 // contribution = weight * value / Σweights, sorted desc — identical to ui/index.html whyPanel
@@ -219,8 +243,8 @@ function sigTable(r, weights){
       `<div><span class="sigtrack"><span class="sigfill" style="width:${pct}%;background:var(--sig-${k})"></span></span><span class="sv">${f2(v)}</span></div>`+
       `<div class="swt">${f2(wt)}</div><div class="sct"><b>${f2(c)}</b></div>`;
   }).join('');
-  return `<div class="sigtable"><div class="sigth">Tín hiệu</div><div class="sigth">Giá trị</div>`+
-    `<div class="sigth right">Trọng số</div><div class="sigth right">Đóng góp</div>${body}</div>`;
+  return `<div class="sigtable"><div class="sigth">Tín hiệu (Signal)</div><div class="sigth">Giá trị (Value)</div>`+
+    `<div class="sigth right">Trọng số (Weight)</div><div class="sigth right">Đóng góp (Contrib.)</div>${body}</div>`;
 }
 function resCard(r, i, weights){
   const reasons = (r.reasons||[]).map(x=>`<span class="reason">${esc(x)}</span>`).join('');
@@ -233,39 +257,112 @@ function resCard(r, i, weights){
   </div>`;
 }
 const STEP_LABEL = {
-  parse:"Phân tích ý định", dense_retrieval:"Truy hồi vector (dense)", lexical_fusion:"BM25 + hợp nhất RRF",
-  rank_signals:"Xếp hạng 9 tín hiệu", constraint_filter:"Lọc ràng buộc", anchor_gate:"Ưu tiên điểm neo",
-  candidate_filter:"Lọc ứng viên (API)", explain_serialize:"Sinh giải thích + đóng gói"};
-// per-step execution timeline: every pipeline stage with its measured latency this request
-function stepsTimeline(t){
-  const steps = (t && t.steps) || []; if(!steps.length) return '';
+  parse:"Phân tích ý định (Parse intent)", dense_retrieval:"Truy hồi vector (Vector retrieval)",
+  lexical_fusion:"BM25 + hợp nhất RRF (Lexical + RRF fusion)", rank_signals:"Xếp hạng 9 tín hiệu (Rank · 9 signals)",
+  constraint_filter:"Lọc ràng buộc (Constraint filter)", anchor_gate:"Ưu tiên điểm neo (Anchor gate)",
+  candidate_filter:"Lọc ứng viên (Candidate filter)", explain_serialize:"Sinh giải thích + đóng gói (Explain + serialize)"};
+// bm25Top / denseTop are [{id, name}] — readable name + id in small text
+const fmtTop = arr => (arr||[]).map(x => (typeof x === 'string') ? esc(x)
+  : `${esc(x.name)} <code>${esc(x.id)}</code>`).join(' · ');
+
+// static per-step detail: what it does + formula + input→output (from docs/pipeline-explainer.html)
+const STEP_DETAIL = {
+  parse: {
+    d:"Chuẩn hoá (fold dấu + mở rộng viết tắt) rồi đọc ý định từ bộ từ vựng đóng. · Normalize (diacritic-fold + expand abbreviations), then parse intent against closed vocabularies.",
+    f:"fold(s): NFD → bỏ dấu → đ→d → lowercase → giữ [a-z0-9/] → gộp khoảng trắng\nexpand: q1→\"quan 1\", hcm→\"tp hcm\", cf→\"ca phe\"",
+    io:"in: chuỗi truy vấn thô (raw query)  →  out: QueryIntent {category, requiredAttrs, anchor, city, openAfter, price, subject}"},
+  dense_retrieval: {
+    d:"bge-m3 đưa truy vấn + POI vào cùng không gian 1024 chiều; cosine đo độ gần NGHĨA. · Embeds query + POIs into one 1024-d space; cosine ranks all 111 POIs by meaning.",
+    f:"cosine(q, poi) = q · v_poi            # cả hai đã chuẩn hoá L2 ⇒ một tích vô hướng",
+    io:"in: text truy vấn  →  out: danh sách POI xếp theo độ tương đồng ngữ nghĩa (ranked ids)"},
+  lexical_fusion: {
+    d:"BM25 (khớp từ khoá trên name/brand/address/attrs/tags) fuse với dense theo THỨ HẠNG → relevance∈[0,1]. · BM25 fused with dense by rank (RRF) → the 'semantic' signal.",
+    f:"RRF(poi) = Σ_r 1/(60 + rank_r(poi))    # r = danh sách BM25, danh sách dense\nRRF_MAX  = 2/(60 + 1)                  # tốt nhất: hạng 1 ở cả hai\nrelevance = min(1, RRF(poi) / RRF_MAX)",
+    io:"in: truy vấn + hạng dense  →  out: relevance∈[0,1] mỗi POI (tín hiệu 'semantic')"},
+  rank_signals: {
+    d:"9 tín hiệu, mỗi tín hiệu ∈[0,1] (0.5 = trung tính); trung bình có trọng số xếp hạng toàn bộ 111 POI. · 9 signals → one weighted-average score sorts the whole corpus.",
+    f:"score(poi) = ( Σₖ wₖ · signalₖ(poi) ) / Σₖ wₖ      # sắp xếp toàn corpus theo score",
+    io:"in: relevance + đặc trưng POI + intent  →  out: score∈[0,1] + breakdown 9 tín hiệu, đã sắp xếp"},
+  constraint_filter: {
+    d:"Lọc AND sau xếp hạng theo vị trí/chủ thể/danh mục; nếu rỗng thì NỚI ràng buộc cụ thể nhất trước. Subject chỉ kích hoạt khi dense chứng thực. · Post-rank AND-filter; relaxes most-specific-first; never returns empty.",
+    f:"giữ POI thoả mọi ràng buộc đang bật; nếu rỗng → bỏ ràng buộc cụ thể nhất → thử lại",
+    io:"in: corpus đã xếp hạng + intent  →  out: danh sách đã lọc (matches only)"},
+  anchor_gate: {
+    d:"Khi có điểm neo, đẩy POI gần lên đầu, POI xa xuống cuối (giữ recall). Thử bán kính hẹp rồi rộng; bỏ qua nếu <3 POI. · Floats near-anchor POIs to top; skips itself if too few hits.",
+    f:"for radius in (30 km, 150 km):\n    hits = POI trong bán kính của anchor\n    if |hits| ≥ 3: return hits ++ phần còn lại   # cả hai giữ thứ tự score\nngược lại: giữ nguyên thứ tự score",
+    io:"in: danh sách đã xếp hạng + anchor  →  out: danh sách đã sắp lại (gần trước)"},
+  candidate_filter: {
+    d:"Áp bộ lọc mức yêu cầu (category / bbox / radiusMeters) và cắt còn 'limit'. Nếu rỗng → C1 fallback trả POI phổ biến nhất. · Applies request filters + limit; C1 fallback if empty.",
+    f:"lọc theo category, bbox, radiusMeters → lấy top-N (limit ≤ 20)\nnếu rỗng: trả top-N theo popularity, source=\"fallback\"",
+    io:"in: danh sách đã xếp hạng + tham số truy vấn  →  out: N ứng viên (picked)"},
+  explain_serialize: {
+    d:"Sinh lý do tiếng Việt từ SỰ THẬT đã kiểm chứng (thuộc tính khớp, khoảng cách, sao, giờ mở) + đóng gói theo hợp đồng Tasco. · Builds verified VI reasons + shapes the contract response.",
+    f:"mỗi reason sinh từ một dữ kiện POI rồi được validate lại → không có reason bịa (no hallucination)",
+    io:"in: POI đã chọn + intent  →  out: SemanticPlaceResult[] { breakdown, reasons, detail }"},
+};
+
+// this-request result for a step, from the live trace (t) + response (d)
+function stepResult(name, d){
+  const t = d.trace || {}, it = d.intent || {}, res = d.results || [];
+  if(name === "parse"){
+    const parts = [];
+    if(it.category) parts.push(`danh mục (category)=<code>${esc(it.category)}</code>`);
+    if((it.requiredAttrs||[]).length) parts.push(`thuộc tính (attrs)=<code>${it.requiredAttrs.map(esc).join(', ')}</code>`);
+    if(it.anchor?.name) parts.push(`điểm neo (anchor)=<code>${esc(it.anchor.name)}</code>`);
+    if(it.city) parts.push(`thành phố (city)=<code>${esc(it.city)}</code>`);
+    if(it.openAfter) parts.push(`mở sau (open after)=<code>${esc(it.openAfter)}</code>`);
+    return parts.length ? parts.join(' · ') : 'không parse được trường nào (no fields parsed)';
+  }
+  if(name === "dense_retrieval") return t.denseTop ? fmtTop(t.denseTop) : '—';
+  if(name === "lexical_fusion")  return (t.bm25Top ? `BM25 top: ${fmtTop(t.bm25Top)}` : '—') + ' → fuse thành relevance∈[0,1]';
+  if(name === "rank_signals"){
+    const top = res[0];
+    return top ? `top: <b>${esc(top.name)}</b> · score=<code>${Number(top.score).toFixed(3)}</code> (xếp trên 111 POI)` : '—';
+  }
+  if(name === "constraint_filter"){
+    const eng = t.constraintsEngaged||[];
+    if(!eng.length) return 'không có ràng buộc cứng (no hard constraints)';
+    return `đang bật (engaged): <code>${eng.map(esc).join(' + ')}</code>` +
+      (t.constraintRelaxed ? ` · đã nới lỏng (relaxed) → còn <code>${(t.constraintsApplied||[]).map(esc).join(' + ')||'none'}</code>` : ' · không nới (not relaxed)');
+  }
+  if(name === "anchor_gate"){
+    if(t.anchorGateFired) return `đã kích hoạt (fired): đẩy POI gần <code>${esc(it.anchor?.name||'anchor')}</code> lên đầu`;
+    return it.anchor?.name ? `không sắp lại (not fired): <3 POI trong bán kính` : 'không có điểm neo (no anchor)';
+  }
+  if(name === "candidate_filter")
+    return `trả ${t.resultCount ?? res.length} kết quả (results)` + (t.fallbackFired ? ` · <b>fallback</b> theo popularity (C1)` : '');
+  if(name === "explain_serialize"){
+    const r0 = res[0];
+    return `${res.length} kết quả có lý do đã kiểm chứng` + (r0?.reasons?.length ? ` · vd top: ${r0.reasons.slice(0,2).map(esc).join(' · ')}` : '');
+  }
+  return '';
+}
+
+// per-step execution timeline: every pipeline stage, its latency, and expandable detail
+function stepsTimeline(d){
+  const t = d.trace || {}, steps = t.steps || []; if(!steps.length) return '';
   const maxMs = Math.max(...steps.map(s=>s.ms), 0.001);
   const total = t.totalMs != null ? t.totalMs : steps.reduce((a,s)=>a+s.ms,0);
   const rows = steps.map(s=>{
     const pct = Math.max(2, Math.round((s.ms/maxMs)*100));
-    return `<div class="srow"><span class="snm">${esc(STEP_LABEL[s.name]||s.name)}</span>`+
+    const det = STEP_DETAIL[s.name];
+    const detail = det ? `<div class="sdetail">
+        <p class="d">${det.d}</p>
+        <div class="flabel">Công thức (Formula)</div><div class="formula">${esc(det.f)}</div>
+        <div class="flabel">Vào → Ra (Input → Output)</div><div class="io">${det.io.replace(/in:/,'<b>in:</b>').replace(/out:/,'<b>out:</b>')}</div>
+        <div class="flabel">Kết quả lần này (Result this request)</div><div class="sresult">${stepResult(s.name, d)}</div>
+      </div>` : '';
+    return `<div class="sitem" data-step="${esc(s.name)}">
+      <div class="srow"><span class="snm"><span class="caret">▸</span> ${esc(STEP_LABEL[s.name]||s.name)}</span>`+
       `<span class="strack"><span class="sfill" style="width:${pct}%"></span></span>`+
-      `<span class="sms">${s.ms.toFixed(2)}<span class="u"> ms</span></span></div>`;
+      `<span class="sms">${s.ms.toFixed(2)}<span class="u"> ms</span></span></div>${detail}</div>`;
   }).join('');
-  return `<div class="steps"><p class="steps-hd">Các bước pipeline · độ trễ mỗi bước — tổng
-    <span class="tot">${Number(total).toFixed(2)} ms</span></p>${rows}</div>`;
+  return `<div class="steps"><p class="steps-hd">Các bước pipeline · độ trễ mỗi bước
+    (Pipeline steps · per-step latency) — tổng (total) <span class="tot">${Number(total).toFixed(2)} ms</span></p>`+
+    `<p class="steps-hint">Nhấn một bước để xem công thức, vào/ra và kết quả · click a step for its formula, I/O and result</p>${rows}</div>`;
 }
-// structural pipeline trace: retrieval → constraints → gate → fallback
-function traceStrip(t){
-  if(!t || !Object.keys(t).length) return '';
-  const steps = [];
-  if(t.bm25Top) steps.push(`<span class="tstep"><b>BM25</b> top: <code>${t.bm25Top.join(', ')}</code></span>`);
-  if(t.denseTop) steps.push(`<span class="tstep"><b>Vector</b> top: <code>${t.denseTop.join(', ')}</code></span>`);
-  steps.push(`<span class="tstep"><b>Fusion</b> RRF → xếp hạng 9 tín hiệu</span>`);
-  const eng = t.constraintsEngaged||[];
-  if(eng.length){
-    const relaxed = t.constraintRelaxed ? ` <span class="tstep warn" style="padding:0 6px">đã nới lỏng</span>` : '';
-    steps.push(`<span class="tstep${t.constraintRelaxed?' warn':''}"><b>Ràng buộc</b>: ${eng.map(esc).join(' + ')}${relaxed}</span>`);
-  } else steps.push(`<span class="tstep"><b>Ràng buộc</b>: không có</span>`);
-  if(t.anchorGateFired) steps.push(`<span class="tstep"><b>Điểm neo</b>: ưu tiên gần</span>`);
-  if(t.fallbackFired) steps.push(`<span class="tstep warn"><b>Dự phòng</b>: xếp theo độ phổ biến (C1)</span>`);
-  return `<div class="trace">${steps.join('')}</div>`;
-}
+// (the old compact trace strip is gone — its retrieval tops, constraints, gate and
+//  fallback now live inside each step's expandable detail in stepsTimeline)
 async function analyze(q){
   q = (q||'').trim(); if(!q) return;
   $('q').value = q; $('go').disabled = true;
@@ -280,7 +377,7 @@ async function analyze(q){
       <span class="q">Truy vấn: <b>${esc(q)}</b></span>
       <span>${intentPills(d.intent||{})}</span>
       <span class="latency"><span class="bolt"></span>${Number(took).toFixed(1)} ms</span></div>`
-      + stepsTimeline(d.trace) + traceStrip(d.trace);
+      + stepsTimeline(d);
     if(!results.length){ $('trace').innerHTML = head + `<div class="state">Không có kết quả.</div>`; }
     else { $('trace').innerHTML = head + results.map((r,i)=>resCard(r,i,weights)).join(''); }
   }catch(e){
@@ -292,6 +389,11 @@ $('chips').innerHTML = EXAMPLES.map(q=>`<button class="chip" data-q="${esc(q)}">
 $('chips').addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(b) analyze(b.dataset.q); });
 $('go').addEventListener('click', ()=>analyze($('q').value));
 $('q').addEventListener('keydown', e=>{ if(e.key==='Enter') analyze($('q').value); });
+// expand/collapse a pipeline step to reveal its formula, I/O and this-request result
+$('trace').addEventListener('click', e=>{
+  const row = e.target.closest('.srow'); if(!row) return;
+  row.closest('.sitem')?.classList.toggle('open');
+});
 loadConfig();
 </script>
 </body>
