@@ -102,8 +102,10 @@ uv run python scripts/report_metrics.py     # -> reports/metrics.md (all gates)
 ```bash
 uv run uvicorn semsearch.api:create_app --factory --port 8000
 # then open http://127.0.0.1:8000/   (keyword-vs-semantic money shot)
+#         http://127.0.0.1:8000/admin (read-only pipeline transparency: weights + per-query trace)
 #   API:  GET /v1/search?q=...            (Tasco contract)
 #         GET /v1/semantic-search?q=...   (+ breakdown, reasons, intent)
+#         GET /admin/config               (read-only committed ranking weights)
 #         GET /health   ·   GET /docs (OpenAPI)
 ```
 

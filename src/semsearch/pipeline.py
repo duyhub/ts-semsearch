@@ -66,7 +66,7 @@ class FullPipeline:
         self._content = {p.poi_id: content_tokens(p) for p in self.pois}  # subject-filter tokens
 
     def _relevance(self, query_text: str, intent: QueryIntent,
-                   dense_ids: list[str]) -> dict[str, float]:
+                   dense_ids: list[str], trace: dict | None = None) -> dict[str, float]:
         """Hybrid RRF relevance per POI, calibrated to [0,1] by a FIXED max (OV6:
         not per-query min-max). A lifted district reference is stripped from the
         BM25 query (quán/quận de-pollution) — location is carried by the distance
@@ -75,14 +75,22 @@ class FullPipeline:
         the caller so corroboration and fusion share the single dense pass."""
         drop = set(fold(intent.district).split()) if intent.district else None
         bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
+        if trace is not None:
+            trace["bm25Top"] = bm25_ids[:5]
         fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
         return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
 
-    def rank_scored(self, query_text: str) -> list[tuple[str, float, dict[str, float]]]:
-        """Full-corpus ranking with per-signal breakdowns (used by the API/explanations)."""
+    def rank_scored(self, query_text: str, trace: dict | None = None
+                    ) -> list[tuple[str, float, dict[str, float]]]:
+        """Full-corpus ranking with per-signal breakdowns (used by the API/explanations).
+
+        When `trace` is a dict, it is populated with a deterministic, structural summary of
+        the pipeline's decisions (retrieval tops, which constraints engaged/relaxed, whether
+        the anchor gate fired) for the read-only /admin transparency view. It adds one dict
+        write per stage and NO extra retrieval; when `trace` is None the path is unchanged."""
         intent = self.parser.parse(query_text)
         dense_ids = [pid for pid, _ in self.dense.search(query_text)]  # one dense pass, reused below
-        rel = self._relevance(query_text, intent, dense_ids)
+        rel = self._relevance(query_text, intent, dense_ids, trace=trace)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
             s, b = self.ranker.score(
@@ -90,9 +98,16 @@ class FullPipeline:
             )
             out.append((p.poi_id, s, b))
         out.sort(key=lambda t: t[1], reverse=True)
-        out = self._constraint_filter(out, intent, dense_ids)
+        out = self._constraint_filter(out, intent, dense_ids, trace=trace)
         if intent.anchor is not None:
-            out = self._anchor_gate(out, intent)
+            gated = self._anchor_gate(out, intent)
+            if trace is not None:
+                trace["anchorGateFired"] = gated is not out  # a new list ⇒ gate reordered
+            out = gated
+        elif trace is not None:
+            trace["anchorGateFired"] = False
+        if trace is not None:
+            trace["denseTop"] = dense_ids[:5]
         return out
 
     def _corroborated_subjects(self, intent: QueryIntent, dense_ids: list[str]) -> set[str]:
@@ -104,7 +119,7 @@ class FullPipeline:
         return {t for t in intent.content_terms
                 if any(t in self._content[pid] for pid in dense_top)}
 
-    def _constraint_filter(self, ranked, intent, dense_ids):
+    def _constraint_filter(self, ranked, intent, dense_ids, trace: dict | None = None):
         """Hard-filter to satisfy the query's expressed constraints (SPEC §6):
         location (district/city), subject (distinctive content terms), or category
         (only when the parse is fully explained). Returns MATCHES ONLY (may be fewer
@@ -120,22 +135,34 @@ class FullPipeline:
         meaningful_residual = [t for t in intent.residual_terms if t not in discredited]
 
         filters = []
+        engaged: list[str] = []  # human-readable labels for the /admin trace
         if intent.district or intent.city:
             d, c = intent.district, intent.city
             filters.append(lambda pid: (d is None or self.by_id[pid].district == d)
                            and (c is None or self.by_id[pid].city == c))
+            engaged.append("location")
         if subject_terms:
             filters.append(lambda pid: subject_terms <= self._content[pid])
+            engaged.append("subject")
         elif intent.category and not meaningful_residual:
             cat = intent.category
             filters.append(lambda pid: self.by_id[pid].category == cat)
+            engaged.append("category")
+
+        def _trace(applied_labels: list[str]) -> None:
+            if trace is not None:
+                trace["constraintsEngaged"] = list(engaged)
+                trace["constraintsApplied"] = applied_labels  # after relaxation
+                trace["constraintRelaxed"] = len(applied_labels) < len(engaged)
 
         active = filters
         while active:
             keep = [t for t in ranked if all(f(t[0]) for f in active)]
             if keep:
+                _trace(engaged[:len(active)])  # engaged labels align with filter order
                 return keep
             active = active[:-1]  # relax subject/category first, then location
+        _trace([])  # every constraint relaxed away; fell back to full ranking
         return ranked
 
     def _anchor_gate(self, ranked, intent):

@@ -10,6 +10,7 @@ are preserved in every field (NFR-4); poi ids are prefixed `poi:` on output only
 """
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from datetime import datetime
@@ -24,12 +25,29 @@ from pydantic import BaseModel
 
 UI_DIR = Path(__file__).resolve().parents[2] / "ui"
 UI_INDEX = UI_DIR / "index.html"
+UI_ADMIN = UI_DIR / "admin.html"
 
 from .data import POI, load_pois
 from .explain import generate_reasons
 from .geo import haversine
+from .logging_setup import configure_logging
 from .pipeline import FullPipeline
-from .rank import DEFAULT_EVAL_NOW, load_weights
+from .rank import DEFAULT_EVAL_NOW, SIGNALS, WEIGHTS_PATH, load_weights
+
+# Vietnamese signal descriptions for the read-only /admin config view. Kept 1:1 with
+# the UI's SIG_GLOSS (ui/index.html) so the transparency view and the product speak the
+# same language. Order follows rank.SIGNALS.
+SIGNAL_DESCRIPTIONS: dict[str, str] = {
+    "semantic": "khớp ngữ nghĩa (BM25 + vector, RRF)",
+    "attributes": "tiện ích khớp nhu cầu",
+    "category": "đúng loại địa điểm",
+    "distance": "gần điểm neo",
+    "rating": "đánh giá (Bayesian)",
+    "popularity": "độ phổ biến",
+    "open_now": "đang mở cửa",
+    "review": "nhu cầu khớp tags/mô tả",
+    "price": "phù hợp mức giá (rẻ / cao cấp)",
+}
 
 ERROR_CODES = {  # SPEC §9 error-code table
     400: "invalid_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
@@ -105,6 +123,7 @@ class SemanticSearchResponse(BaseModel):
     results: list[SemanticPlaceResult]
     meta: Meta
     weights: dict[str, float] = {}  # the ranker's tuned per-signal weights (for the "Vì sao?" panel)
+    trace: dict = {}  # deterministic pipeline decision summary (read-only /admin transparency)
 
 
 class ErrorDetail(BaseModel):
@@ -140,6 +159,7 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
                prewarm: bool = True) -> FastAPI:
     app = FastAPI(title="Tasco Semantic Search & Ranking", version="0.1.0")
+    log = configure_logging()  # one INFO record per request; level via SEMSEARCH_LOG_LEVEL
     if UI_DIR.exists():  # serve vendored assets (Leaflet js/css) offline-safe at /ui/*
         app.mount("/ui", StaticFiles(directory=str(UI_DIR)), name="ui")
     # Serve the TUNED weights (weights.json), so the live API matches the reported
@@ -153,12 +173,16 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
 
     def _rank_filtered(q: str, *, limit: int, category: Optional[str],
                        ref: Optional[tuple[float, float]], radius: Optional[float],
-                       bbox: Optional[tuple[float, float, float, float]], engine: str = "full"):
+                       bbox: Optional[tuple[float, float, float, float]], engine: str = "full",
+                       collect_trace: bool = False):
         intent = pipeline.parser.parse(q)
+        # trace is only assembled for the extended endpoint; the contract /v1/search path
+        # passes collect_trace=False so it stays cost-free and unchanged.
+        trace: dict = {} if collect_trace else None  # type: ignore[assignment]
         if engine == "keyword":  # BM25-only lane for the demo's keyword column
             ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
         else:
-            ranked = pipeline.rank_scored(q)  # full corpus, (id, score, breakdown)
+            ranked = pipeline.rank_scored(q, trace=trace)  # full corpus, (id, score, breakdown)
         picked = []
         for pid, score, breakdown in ranked:
             poi = pipeline.by_id[pid]
@@ -172,11 +196,15 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             if len(picked) >= limit:
                 break
         source = "semsearch"
-        if not picked:  # C1 backstop: valid query never returns empty
+        fallback = not picked
+        if fallback:  # C1 backstop: valid query never returns empty
             top = sorted(pipeline.pois, key=lambda p: p.popularity, reverse=True)[:limit]
             picked = [(p, 0.0, {}) for p in top]
             source = "fallback"
-        return intent, picked, source
+        if trace is not None:
+            trace["fallbackFired"] = fallback
+            trace["resultCount"] = len(picked)
+        return intent, picked, source, (trace or {})
 
     def _place(poi: POI, score: float, ref, source: str) -> PlaceResult:
         return PlaceResult(
@@ -211,6 +239,41 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     def health():
         return {"status": "ok", "pois": len(pipeline.pois)}
 
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin():
+        """Read-only pipeline transparency view. No mutating routes exist under /admin —
+        it renders committed weights and per-request traces from the public endpoints, so
+        determinism (NFR-5) and the tune/test split (NFR-6) are never touched."""
+        if UI_ADMIN.exists():
+            return HTMLResponse(UI_ADMIN.read_text(encoding="utf-8"))
+        return HTMLResponse("<h1>Tasco — Admin transparency view</h1>"
+                            "<p>admin.html not found. See /docs.</p>")
+
+    @app.get("/admin/config")
+    def admin_config():
+        """READ-ONLY snapshot of the committed ranking weights actually in use, with each
+        signal's normalized share (weight / Σweights — the same normalization score() uses)
+        and a Vietnamese description. Sourced from the live ranker (== committed
+        data/weights.json at boot); there is deliberately no PUT/POST — weights change only
+        through the offline tune path (NFR-6 hard rule)."""
+        weights = dict(pipeline.ranker.weights)
+        total = sum(weights.values()) or 1.0
+        signals = [
+            {"key": k, "weight": round(weights.get(k, 0.0), 4),
+             "share": round(weights.get(k, 0.0) / total, 4),
+             "description": SIGNAL_DESCRIPTIONS.get(k, "")}
+            for k in SIGNALS
+        ]
+        tuned_ndcg5 = None
+        if WEIGHTS_PATH.exists():
+            try:
+                tuned_ndcg5 = json.loads(WEIGHTS_PATH.read_text(encoding="utf-8")).get("tuned_ndcg5_tune")
+            except (json.JSONDecodeError, OSError):
+                tuned_ndcg5 = None
+        return {"signals": signals, "weightSum": round(total, 4),
+                "tunedNdcg5Tune": tuned_ndcg5, "readOnly": True,
+                "source": "committed data/weights.json (tuned on tune split)"}
+
     @app.get("/v1/search", response_model=SearchResponse)
     @app.get("/search", response_model=SearchResponse)
     @app.get("/v1/geocode-search", response_model=SearchResponse)
@@ -228,11 +291,13 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             return err
         rid, q, limit, ref, radius, box, category = parsed
         t0 = time.perf_counter()
-        _, picked, source = _rank_filtered(q, limit=limit, category=category, ref=ref,
-                                           radius=radius, bbox=box,
-                                           engine="keyword" if engine == "keyword" else "full")
+        _, picked, source, _ = _rank_filtered(q, limit=limit, category=category, ref=ref,
+                                              radius=radius, bbox=box,
+                                              engine="keyword" if engine == "keyword" else "full")
         took = (time.perf_counter() - t0) * 1000
         results = [_place(p, s, ref, source) for p, s, _ in picked]
+        log.info("search q=%r engine=%s results=%d source=%s tookMs=%.1f",
+                 q, engine, len(results), source, took)
         resp = SearchResponse(query=q, results=results,
                               meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)))
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
@@ -251,8 +316,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             return err
         rid, q, limit, ref, radius, box, category = parsed
         t0 = time.perf_counter()
-        intent, picked, source = _rank_filtered(q, limit=limit, category=category, ref=ref,
-                                                radius=radius, bbox=box)
+        intent, picked, source, trace = _rank_filtered(q, limit=limit, category=category, ref=ref,
+                                                        radius=radius, bbox=box, collect_trace=True)
         took = (time.perf_counter() - t0) * 1000
         results = [
             SemanticPlaceResult(**_place(p, s, ref, source).model_dump(),
@@ -272,7 +337,10 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
                           anchor=anchor, city=intent.city, openAfter=intent.open_after)
         resp = SemanticSearchResponse(query=q, intent=echo, results=results,
                                       meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)),
-                                      weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()})
+                                      weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()},
+                                      trace=trace)
+        log.info("semantic-search q=%r results=%d source=%s tookMs=%.1f trace=%s",
+                 q, len(results), source, took, trace)
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
     return app

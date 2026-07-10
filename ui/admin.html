@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Tasco.tìm — Chế độ minh bạch (Admin)</title>
+<meta name="description" content="Chế độ minh bạch: xem trọng số tín hiệu (chỉ đọc) và cách pipeline tính điểm cho từng truy vấn." />
+<!-- Read-only pipeline transparency view. Same origin, same app (:8000), route /admin.
+     Renders the committed ranking weights (read-only) and a per-request trace built from
+     the existing /v1/semantic-search response — no mutable state, no SSE, no second port.
+     Determinism (NFR-5) and the tune/test split (NFR-6) are never touched. Reuses the
+     product design tokens + vendored font (ui/index.html) so there is one visual language. -->
+<link rel="stylesheet" href="/ui/vendor/fonts/be-vietnam-pro.css" />
+<style>
+  :root{
+    --canvas:#f1f3ee; --surface:#ffffff; --surface-2:#f8f9f5;
+    --ink:#16191c; --ink-dim:#59626d; --ink-mute:#8a94a0;
+    --line:#e6e8e1; --line-2:#d6d9cf;
+    --primary:#0e7a6b; --primary-deep:#0a5c50; --primary-tint:#e4f2ee; --primary-ring:rgba(14,122,107,.35);
+    --accent:#c9790a; --accent-tint:#fbeccb; --accent-ink:#8a4f00;
+    --radius:16px; --radius-sm:11px; --radius-pill:999px;
+    --shadow-sm:0 1px 2px rgba(16,20,24,.06), 0 1px 3px rgba(16,20,24,.04);
+    --shadow-md:0 8px 26px -14px rgba(16,20,24,.30);
+    /* Okabe-Ito colourblind-safe palette, one hue per signal (matches ui/index.html) */
+    --sig-semantic:#0072b2; --sig-attributes:#e69f00; --sig-category:#009e73; --sig-distance:#56b4e9;
+    --sig-rating:#cc79a7; --sig-popularity:#8250a8; --sig-open_now:#b8860b; --sig-review:#d55e00;
+    --sig-price:#117777;
+    --font:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--canvas); color:var(--ink); font-family:var(--font);
+    font-weight:450; font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;}
+  button,input{font-family:inherit}
+  a{color:var(--primary-deep)}
+
+  .topbar{display:flex; align-items:center; gap:14px; padding:14px 22px; background:var(--surface);
+    border-bottom:1px solid var(--line); position:sticky; top:0; z-index:10}
+  .brand{display:flex; align-items:center; font-weight:800; font-size:20px; letter-spacing:-.02em}
+  .brand .pin{width:9px;height:9px;border-radius:50% 50% 50% 0;background:var(--primary);transform:rotate(-45deg);margin-right:7px}
+  .brand .dot{color:var(--primary)}
+  .modeflag{font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    padding:4px 10px; border-radius:7px; background:var(--ink); color:#fff}
+  .topbar .home{margin-left:auto; font-size:13.5px; font-weight:600; text-decoration:none;
+    color:var(--ink-dim); border:1px solid var(--line-2); padding:7px 13px; border-radius:var(--radius-pill)}
+  .topbar .home:hover{color:var(--ink); border-color:var(--primary)}
+
+  .wrap{max-width:1080px; margin:0 auto; padding:22px; display:flex; flex-direction:column; gap:20px}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-sm)}
+  .panel-hd{display:flex; align-items:baseline; gap:10px; padding:15px 18px 6px}
+  .panel-hd h2{margin:0; font-size:16px; font-weight:700}
+  .panel-hd .sub{font-size:12.5px; color:var(--ink-mute)}
+  .ro-badge{margin-left:auto; font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--primary-deep); background:var(--primary-tint); padding:3px 9px; border-radius:var(--radius-pill)}
+
+  /* ---------- config (read-only weights) ---------- */
+  .cfgnote{padding:2px 18px 12px; font-size:13px; color:var(--ink-dim)}
+  .cfgnote b{color:var(--ink)}
+  .weights{padding:4px 18px 18px; display:flex; flex-direction:column; gap:9px}
+  .wrow{display:grid; grid-template-columns:150px 1fr 116px; align-items:center; gap:12px}
+  .wrow .nm{font-weight:600; font-size:14px}
+  .wrow .nm .gl{display:block; font-weight:450; font-size:11.5px; color:var(--ink-mute)}
+  .wtrack{height:12px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-pill); overflow:hidden}
+  .wfill{height:100%; border-radius:var(--radius-pill)}
+  .wnums{text-align:right; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-dim)}
+  .wnums b{color:var(--ink); font-size:13.5px}
+
+  /* ---------- search ---------- */
+  .searchrow{display:flex; gap:10px; padding:14px 18px 16px}
+  .search{flex:1; display:flex; align-items:center; gap:10px; background:var(--surface-2);
+    border:1.5px solid var(--line-2); border-radius:var(--radius-pill); padding:10px 18px}
+  .search:focus-within{border-color:var(--primary); box-shadow:0 0 0 4px var(--primary-ring)}
+  .search input{flex:1; background:none; border:none; outline:none; font:inherit; font-size:16px; font-weight:500}
+  .go{border:none; background:var(--primary); color:#fff; font-weight:700; font-size:14.5px;
+    padding:0 22px; border-radius:var(--radius-pill)}
+  .go:disabled{opacity:.5}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; padding:0 18px 16px}
+  .chip{background:var(--surface); border:1px solid var(--line-2); color:var(--ink-dim);
+    padding:6px 13px; border-radius:var(--radius-pill); font-size:13px; font-weight:500}
+  .chip:hover{color:var(--ink); border-color:var(--primary); background:var(--primary-tint)}
+
+  /* ---------- states ---------- */
+  .state{padding:22px 18px; text-align:center; color:var(--ink-mute); font-size:14px}
+  .state.err{color:#b3261e; background:#fdecea; border-top:1px solid #f5c6c2; border-radius:0 0 var(--radius) var(--radius)}
+  .spin{display:inline-block; width:16px; height:16px; border:2px solid var(--line-2); border-top-color:var(--primary);
+    border-radius:50%; animation:sp .7s linear infinite; vertical-align:-3px; margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- per-request trace ---------- */
+  .tracehd{display:flex; align-items:center; gap:12px; padding:12px 18px; border-top:1px solid var(--line); flex-wrap:wrap}
+  .tracehd .q{font-size:13.5px; color:var(--ink-dim)} .tracehd .q b{color:var(--ink)}
+  .ipill{font-size:12px; font-weight:600; padding:3px 9px; border-radius:var(--radius-pill); background:var(--primary-tint); color:var(--primary-deep)}
+  .ipill.loc{background:var(--accent-tint); color:var(--accent-ink)}
+  .latency{margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600;
+    color:var(--primary-deep); background:var(--primary-tint); padding:5px 11px; border-radius:var(--radius-pill); font-variant-numeric:tabular-nums}
+  .latency .bolt{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+
+  /* pipeline stage trace strip */
+  .trace{display:flex; flex-wrap:wrap; gap:8px; padding:0 18px 12px}
+  .tstep{font-size:12px; color:var(--ink-dim); background:var(--surface-2); border:1px solid var(--line);
+    border-radius:var(--radius-sm); padding:6px 11px}
+  .tstep b{color:var(--ink); font-weight:600}
+  .tstep code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--ink-dim)}
+  .tstep.warn{background:var(--accent-tint); border-color:#e6cf9a; color:var(--accent-ink)}
+
+  .res{border-top:1px solid var(--line); padding:14px 18px}
+  .res .top{display:flex; gap:11px; align-items:baseline}
+  .rank{flex:none; width:26px; height:26px; border-radius:8px; background:var(--primary-tint); color:var(--primary-deep);
+    font-weight:800; font-size:13px; display:grid; place-items:center; font-variant-numeric:tabular-nums}
+  .res .name{font-weight:700; font-size:15px} .res .where{font-size:12.5px; color:var(--ink-mute)}
+  .res .score{margin-left:auto; font-size:13px; color:var(--ink-dim)} .res .score b{color:var(--ink); font-variant-numeric:tabular-nums}
+  .reasons{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px 37px}
+  .reason{font-size:12px; color:var(--ink-dim); background:var(--surface-2); border:1px solid var(--line); padding:3px 9px; border-radius:var(--radius-pill)}
+  .sigtable{margin:8px 0 2px 37px; display:grid; grid-template-columns:150px 1fr 54px 62px; gap:5px 10px; align-items:center}
+  .sigth{font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-mute)}
+  .sigth.right{text-align:right}
+  .snm{font-weight:600; font-size:13px} .snm .gl{display:block; font-weight:450; font-size:11px; color:var(--ink-mute)}
+  .sigtrack{display:inline-block; width:100%; height:9px; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-pill); overflow:hidden; vertical-align:middle}
+  .sigfill{display:block; height:100%}
+  .sv{font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-dim); display:inline-block; margin-left:8px}
+  .swt,.sct{text-align:right; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--ink-dim)}
+  .sct b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="brand"><span class="pin"></span>Tasco<span class="dot">.</span>tìm</span>
+  <span class="modeflag">Minh bạch</span>
+  <a class="home" href="/">← Về trang tìm kiếm</a>
+</div>
+
+<div class="wrap">
+  <!-- ===== Config: read-only signal weights ===== -->
+  <section class="panel">
+    <div class="panel-hd">
+      <h2>Cấu hình tín hiệu xếp hạng</h2>
+      <span class="sub">9 tín hiệu · điểm = Σ (trọng số × tín hiệu) / Σ trọng số</span>
+      <span class="ro-badge">Chỉ đọc</span>
+    </div>
+    <div class="cfgnote">Trọng số được <b>tinh chỉnh trên tập tune</b> và <b>cố định (committed)</b> trong
+      <code>data/weights.json</code>. Không sửa được tại đây — thay đổi chỉ qua quy trình tune ngoại tuyến,
+      để giữ tính tất định (NFR-5) và không đụng tập test (NFR-6). <span id="cfgmeta"></span></div>
+    <div class="weights" id="weights"><div class="state"><span class="spin"></span>Đang tải trọng số…</div></div>
+  </section>
+
+  <!-- ===== Transparency: per-request pipeline trace ===== -->
+  <section class="panel">
+    <div class="panel-hd">
+      <h2>Xem pipeline tính điểm</h2>
+      <span class="sub">Nhập truy vấn — xem ý định, tín hiệu và mức đóng góp cho từng kết quả</span>
+    </div>
+    <div class="searchrow">
+      <label class="search">
+        <input id="q" type="text" placeholder="vd: quán cà phê yên tĩnh để làm việc ở quận 1" autocomplete="off" />
+      </label>
+      <button class="go" id="go">Phân tích</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div id="trace"><div class="state">Nhập một truy vấn để xem pipeline “suy nghĩ”.</div></div>
+  </section>
+</div>
+
+<script>
+const SIG_LABEL = {semantic:"Ngữ nghĩa", attributes:"Thuộc tính", category:"Danh mục", distance:"Khoảng cách",
+  rating:"Đánh giá", popularity:"Phổ biến", open_now:"Đang mở", review:"Tags/mô tả", price:"Giá"};
+const EXAMPLES = ["quán cà phê yên tĩnh để làm việc ở quận 1", "nơi hẹn hò lãng mạn", "quán ăn mở khuya gần Hồ Gươm", "cà phê giá rẻ cho sinh viên"];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f2 = x => x>=1 ? '1.0' : Number(x).toFixed(2).replace(/^0/,'');
+const $ = id => document.getElementById(id);
+
+/* ---------- config panel (read-only) ---------- */
+async function loadConfig(){
+  try{
+    const r = await fetch('/admin/config'); if(!r.ok) throw new Error('HTTP '+r.status);
+    const cfg = await r.json();
+    if(cfg.tunedNdcg5Tune!=null) $('cfgmeta').innerHTML = `NDCG@5 (tune) = <b>${Number(cfg.tunedNdcg5Tune).toFixed(3)}</b>.`;
+    const maxShare = Math.max(...cfg.signals.map(s=>s.share), 0.0001);
+    $('weights').innerHTML = cfg.signals.map(s=>{
+      const pct = Math.round((s.share/maxShare)*100);
+      return `<div class="wrow">
+        <div class="nm">${SIG_LABEL[s.key]||s.key}<span class="gl">${esc(s.description)}</span></div>
+        <div class="wtrack"><div class="wfill" style="width:${pct}%;background:var(--sig-${s.key})"></div></div>
+        <div class="wnums">trọng số <b>${f2(s.weight)}</b> · ${(s.share*100).toFixed(0)}%</div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    $('weights').innerHTML = `<div class="state err">Không tải được cấu hình: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ---------- per-request trace ---------- */
+function intentPills(it){
+  const p = [];
+  if(it.category) p.push(`<span class="ipill">${esc(it.category)}</span>`);
+  (it.requiredAttrs||[]).forEach(a=>p.push(`<span class="ipill">${esc(a)}</span>`));
+  if(it.anchor?.name) p.push(`<span class="ipill loc">gần ${esc(it.anchor.name)}</span>`);
+  if(it.city) p.push(`<span class="ipill loc">${esc(it.city)}</span>`);
+  if(it.openAfter) p.push(`<span class="ipill">mở sau ${esc(it.openAfter)}</span>`);
+  return p.join(' ');
+}
+// contribution = weight * value / Σweights, sorted desc — identical to ui/index.html whyPanel
+function sigTable(r, weights){
+  const bd = r.breakdown||{}, totalW = Object.values(weights).reduce((a,b)=>a+b,0)||1;
+  const rows = Object.keys(bd).map(k=>({k, v:bd[k], wt:(weights[k]??0), c:(weights[k]??0)*bd[k]/totalW}))
+                             .sort((a,b)=>b.c-a.c);
+  const body = rows.map(({k,v,wt,c})=>{
+    const pct = Math.round(Math.max(0,Math.min(1,v))*100);
+    return `<div class="snm">${SIG_LABEL[k]||k}</div>`+
+      `<div><span class="sigtrack"><span class="sigfill" style="width:${pct}%;background:var(--sig-${k})"></span></span><span class="sv">${f2(v)}</span></div>`+
+      `<div class="swt">${f2(wt)}</div><div class="sct"><b>${f2(c)}</b></div>`;
+  }).join('');
+  return `<div class="sigtable"><div class="sigth">Tín hiệu</div><div class="sigth">Giá trị</div>`+
+    `<div class="sigth right">Trọng số</div><div class="sigth right">Đóng góp</div>${body}</div>`;
+}
+function resCard(r, i, weights){
+  const reasons = (r.reasons||[]).map(x=>`<span class="reason">${esc(x)}</span>`).join('');
+  return `<div class="res">
+    <div class="top"><div class="rank">${i+1}</div>
+      <div><div class="name">${esc(r.name)}</div><div class="where">${esc(r.label||r.category||'')}</div></div>
+      <div class="score">điểm <b>${Number(r.score).toFixed(3)}</b></div></div>
+    ${reasons?`<div class="reasons">${reasons}</div>`:''}
+    ${sigTable(r, weights)}
+  </div>`;
+}
+// structural pipeline trace: retrieval → constraints → gate → fallback
+function traceStrip(t){
+  if(!t || !Object.keys(t).length) return '';
+  const steps = [];
+  if(t.bm25Top) steps.push(`<span class="tstep"><b>BM25</b> top: <code>${t.bm25Top.join(', ')}</code></span>`);
+  if(t.denseTop) steps.push(`<span class="tstep"><b>Vector</b> top: <code>${t.denseTop.join(', ')}</code></span>`);
+  steps.push(`<span class="tstep"><b>Fusion</b> RRF → xếp hạng 9 tín hiệu</span>`);
+  const eng = t.constraintsEngaged||[];
+  if(eng.length){
+    const relaxed = t.constraintRelaxed ? ` <span class="tstep warn" style="padding:0 6px">đã nới lỏng</span>` : '';
+    steps.push(`<span class="tstep${t.constraintRelaxed?' warn':''}"><b>Ràng buộc</b>: ${eng.map(esc).join(' + ')}${relaxed}</span>`);
+  } else steps.push(`<span class="tstep"><b>Ràng buộc</b>: không có</span>`);
+  if(t.anchorGateFired) steps.push(`<span class="tstep"><b>Điểm neo</b>: ưu tiên gần</span>`);
+  if(t.fallbackFired) steps.push(`<span class="tstep warn"><b>Dự phòng</b>: xếp theo độ phổ biến (C1)</span>`);
+  return `<div class="trace">${steps.join('')}</div>`;
+}
+async function analyze(q){
+  q = (q||'').trim(); if(!q) return;
+  $('q').value = q; $('go').disabled = true;
+  $('trace').innerHTML = `<div class="state"><span class="spin"></span>Đang chạy pipeline…</div>`;
+  try{
+    const r = await fetch(`/v1/semantic-search?q=${encodeURIComponent(q)}&limit=8`);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    const weights = d.weights||{}, results = d.results||[];
+    const took = d.meta?.tookMs ?? 0;
+    const head = `<div class="tracehd">
+      <span class="q">Truy vấn: <b>${esc(q)}</b></span>
+      <span>${intentPills(d.intent||{})}</span>
+      <span class="latency"><span class="bolt"></span>${Number(took).toFixed(1)} ms</span></div>`
+      + traceStrip(d.trace);
+    if(!results.length){ $('trace').innerHTML = head + `<div class="state">Không có kết quả.</div>`; }
+    else { $('trace').innerHTML = head + results.map((r,i)=>resCard(r,i,weights)).join(''); }
+  }catch(e){
+    $('trace').innerHTML = `<div class="state err">Lỗi khi phân tích truy vấn: ${esc(e.message)}. Thử lại.</div>`;
+  }finally{ $('go').disabled = false; }
+}
+
+$('chips').innerHTML = EXAMPLES.map(q=>`<button class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join('');
+$('chips').addEventListener('click', e=>{ const b=e.target.closest('.chip'); if(b) analyze(b.dataset.q); });
+$('go').addEventListener('click', ()=>analyze($('q').value));
+$('q').addEventListener('keydown', e=>{ if(e.key==='Enter') analyze($('q').value); });
+loadConfig();
+</script>
+</body>
+</html>

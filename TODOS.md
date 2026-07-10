@@ -50,3 +50,21 @@ time allows; none blocks a passing gate.
 - **Context:** SPEC §1 (`derived/` gitignored), NFR-3, NFR-7. The doc matrix is deterministic given
   the committed model + data, so committing it is defensible.
 - **Depends on:** Phase 3 (embeddings.py) + the provider-stamp fix (A2).
+
+---
+
+## TODO — Admin transparency view: deferred scope (autoplan, 2026-07-10)
+
+Surfaced while reframing the `/admin` pipeline-transparency view (docs/plans/admin-dashboard-plan.md).
+The mutable-weights / separate-port / SSE-logging scope was dropped at the CEO gate (both models
+flagged it; user approved a read-only reframe). These remain out of scope for v1:
+
+- **Auth/RBAC on `/admin`** — v1 is localhost + read-only (only exposes committed weights and runs
+  the public search), so no auth. Needed before any non-localhost deploy.
+- **Full structured-logging module** — v1 keeps at most one INFO stage-summary per request off the
+  hot path. A ring-buffer/SSE/live-level observability stack was rejected as low-signal for judging.
+- **Editing ranking constants** (COS_LO, RRF_C, radii, weights) at runtime — deliberately excluded;
+  any change must go through the offline tune path that writes committed `data/weights.json` from the
+  tune split only (protects NFR-5 determinism + the eval-integrity hard rule).
+- **Experiment / metrics tracking, historical log storage** — out of scope; the deck + reports/ carry
+  metrics.
