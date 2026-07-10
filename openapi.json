@@ -838,6 +838,104 @@
         ],
         "title": "Meta"
       },
+      "PlaceDetail": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "attributes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attributes",
+            "default": []
+          },
+          "rating": {
+            "type": "number",
+            "title": "Rating"
+          },
+          "reviewCount": {
+            "type": "integer",
+            "title": "Reviewcount"
+          },
+          "priceLevel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricelevel"
+          },
+          "openingHours": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openinghours"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "subCategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "reviewCount"
+        ],
+        "title": "PlaceDetail",
+        "description": "Extra POI fields for the UI's \"Chi tiết\" (details) panel — not part of the\ncontract-exact /v1/search response, only the enriched /v1/semantic-search."
+      },
       "PlaceResult": {
         "properties": {
           "id": {
@@ -1002,6 +1100,9 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/PlaceDetail"
           }
         },
         "type": "object",
@@ -1017,7 +1118,8 @@
           "source",
           "tags",
           "breakdown",
-          "reasons"
+          "reasons",
+          "detail"
         ],
         "title": "SemanticPlaceResult"
       },
@@ -1039,6 +1141,14 @@
           },
           "meta": {
             "$ref": "#/components/schemas/Meta"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Weights",
+            "default": {}
           }
         },
         "type": "object",

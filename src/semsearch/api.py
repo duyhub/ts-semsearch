@@ -18,6 +18,7 @@ from typing import Optional
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,9 +32,9 @@ from .geo import haversine
 from .pipeline import FullPipeline
 from .rank import DEFAULT_EVAL_NOW, load_weights
 
-ERROR_CODES = {  # SPEC §9 error-code table
+ERROR_CODES = {  # SPEC §9 / tasco_api.pdf "Common error codes" table (verbatim strings)
     400: "invalid_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
-    408: "request_timeout", 429: "rate_limited", 500: "internal_error", 503: "unavailable",
+    408: "timeout", 429: "rate_limited", 500: "internal_error", 503: "service_unavailable",
 }
 
 
@@ -121,7 +122,9 @@ class ErrorResponse(BaseModel):
 def _error(status: int, message: str, request_id: str, details: dict | None = None) -> JSONResponse:
     body = ErrorResponse(error=ErrorDetail(code=ERROR_CODES[status], message=message, details=details),
                          requestId=request_id)
-    return JSONResponse(status_code=status, content=body.model_dump())
+    # Every error path echoes X-Request-Id in the header too (matches the success paths).
+    return JSONResponse(status_code=status, content=body.model_dump(),
+                        headers={"X-Request-Id": request_id})
 
 
 def _distance_m(poi: POI, ref: Optional[tuple[float, float]]) -> Optional[int]:
@@ -159,22 +162,36 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
         else:
             ranked = pipeline.rank_scored(q)  # full corpus, (id, score, breakdown)
+
+        def _passes(poi: POI) -> bool:
+            """The caller's explicit category / bbox / radius window (radius=0 is an
+            explicit 0-metre constraint, not 'absent' — D4)."""
+            if category and poi.category != category:
+                return False
+            if bbox and not (bbox[0] <= poi.lon <= bbox[2] and bbox[1] <= poi.lat <= bbox[3]):
+                return False
+            if ref is not None and radius is not None and \
+                    haversine(ref[0], ref[1], poi.lat, poi.lon) * 1000 > radius:
+                return False
+            return True
+
         picked = []
         for pid, score, breakdown in ranked:
             poi = pipeline.by_id[pid]
-            if category and poi.category != category:
-                continue
-            if bbox and not (bbox[0] <= poi.lon <= bbox[2] and bbox[1] <= poi.lat <= bbox[3]):
-                continue
-            if ref and radius and haversine(ref[0], ref[1], poi.lat, poi.lon) * 1000 > radius:
+            if not _passes(poi):
                 continue
             picked.append((poi, score, breakdown))
             if len(picked) >= limit:
                 break
         source = "semsearch"
-        if not picked:  # C1 backstop: valid query never returns empty
-            top = sorted(pipeline.pois, key=lambda p: p.popularity, reverse=True)[:limit]
-            picked = [(p, 0.0, {}) for p in top]
+        if not picked:  # C1/G5 backstop: a valid query never returns empty.
+            # C5/D3: honour the caller's filters first — the fallback pool is the SAME
+            # category/bbox/radius window, by popularity. Only an impossible constraint
+            # (e.g. a mid-ocean bbox) drops to the global popularity list, still labelled
+            # source='fallback'. Deterministic: stable sort over the fixed load order.
+            by_pop = sorted(pipeline.pois, key=lambda p: p.popularity, reverse=True)
+            pool = [p for p in by_pop if _passes(p)] or by_pop
+            picked = [(p, 0.0, {}) for p in pool[:limit]]
             source = "fallback"
         return intent, picked, source
 
@@ -191,6 +208,9 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         rid = x_request_id or str(uuid.uuid4())
         if q is None or not q.strip():
             return None, _error(400, "query parameter 'q' is required", rid)
+        if radiusMeters is not None and radiusMeters < 0:  # D5: a radius is a distance, not signed
+            return None, _error(400, "radiusMeters must be >= 0", rid,
+                                details={"field": "radiusMeters"})
         limit = max(1, min(int(limit), 20))  # default 10, max 20 (SPEC §9)
         ref = (lat, lon) if lat is not None and lon is not None else None
         box = None
@@ -200,6 +220,18 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             except ValueError as e:
                 return None, _error(400, str(e), rid)
         return (rid, q, limit, ref, radiusMeters, box, category), None
+
+    @app.exception_handler(RequestValidationError)
+    def _on_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # C19/C21: type-coercion failures (non-numeric limit/lat/lon/radiusMeters) reach
+        # FastAPI as a raw 422 {detail:[...]}. Re-shape to the contract ErrorResponse
+        # (400 invalid_request) and carry X-Request-Id in body + header like every path.
+        rid = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        errors = exc.errors()
+        first = errors[0] if errors else {}
+        field = str(first.get("loc", ["", "?"])[-1])
+        msg = first.get("msg", "invalid request parameter")
+        return _error(400, f"invalid value for '{field}': {msg}", rid, details={"field": field})
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -234,7 +266,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         took = (time.perf_counter() - t0) * 1000
         results = [_place(p, s, ref, source) for p, s, _ in picked]
         resp = SearchResponse(query=q, results=results,
-                              meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)))
+                              meta=Meta(count=len(results), limitApplied=limit,
+                                        tookMs=round(took, 2), source=source))
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
     @app.get("/v1/semantic-search", response_model=SemanticSearchResponse)
@@ -271,7 +304,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         echo = IntentEcho(category=intent.category, requiredAttrs=intent.required_attrs,
                           anchor=anchor, city=intent.city, openAfter=intent.open_after)
         resp = SemanticSearchResponse(query=q, intent=echo, results=results,
-                                      meta=Meta(count=len(results), limitApplied=limit, tookMs=round(took, 2)),
+                                      meta=Meta(count=len(results), limitApplied=limit,
+                                                tookMs=round(took, 2), source=source),
                                       weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()})
         return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
 
