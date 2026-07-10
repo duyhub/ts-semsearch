@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Tasco.tìm — Chế độ minh bạch (Admin)</title>
-<meta name="description" content="Chế độ minh bạch: xem trọng số tín hiệu (chỉ đọc) và cách pipeline tính điểm cho từng truy vấn." />
+<title>Tasco.tìm — Chế độ Admin (Admin)</title>
+<meta name="description" content="Chế độ Admin: xem trọng số tín hiệu (read-only) và cách pipeline tính điểm cho từng truy vấn." />
 <!-- Read-only pipeline transparency view. Same origin, same app (:8000), route /admin.
      Renders the committed ranking weights (read-only) and a per-request trace built from
      the existing /v1/semantic-search response — no mutable state, no SSE, no second port.
@@ -135,7 +135,7 @@
 <body>
 <div class="topbar">
   <span class="brand"><span class="pin"></span>Tasco<span class="dot">.</span>tìm</span>
-  <span class="modeflag">Minh bạch</span>
+  <span class="modeflag">Admin</span>
   <a class="home" href="/">← Về trang tìm kiếm</a>
 </div>
 
@@ -145,7 +145,7 @@
     <div class="panel-hd">
       <h2>Cấu hình tín hiệu xếp hạng</h2>
       <span class="sub">9 tín hiệu · điểm = Σ (trọng số × tín hiệu) / Σ trọng số</span>
-      <span class="ro-badge">Chỉ đọc</span>
+      <span class="ro-badge">read-only</span>
     </div>
     <div class="cfgnote">Trọng số được <b>tinh chỉnh trên tập tune</b> và <b>cố định (committed)</b> trong
       <code>data/weights.json</code>. Không sửa được tại đây — thay đổi chỉ qua quy trình tune ngoại tuyến,
