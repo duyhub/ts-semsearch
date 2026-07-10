@@ -12,7 +12,7 @@ from collections import Counter
 from typing import Sequence
 
 from .data import POI, QueryIntent, content_tokens
-from .geo import Gazetteer
+from .geo import Gazetteer, detect_coordinate_anchor
 from .normalize import (
     STOPWORDS,
     expand_query,
@@ -128,9 +128,18 @@ class Parser:
             consumed.update(fold(city).split())
         # "mở khuya" implies an open-after-22:00 preference (derived from the matched attr).
         open_after = "22:00" if "mở khuya" in required else None
-        # Resolve against the expanded haystack (so "q1" -> "quan 1" resolves, FR-2) plus
-        # the raw query for diacritic compatibility (Fix 1: 'phở có' won't anchor to Phố Cổ).
-        anchor = self.gazetteer.resolve(hay, text)
+        # An explicit decimal lat/lon pair (SPEC §7.1; PRD FR-2) is the strongest
+        # location signal, so it takes PRECEDENCE over gazetteer name resolution.
+        # Detected on the RAW query before folding (fold() would shatter '10.7738'
+        # into '10'/'7738'). The coordinate integer shards are pure digits, so they
+        # are already excluded from residual/content_terms below (not t.isdigit() /
+        # t.isalpha()); no extra consumption is needed.
+        anchor = detect_coordinate_anchor(text)
+        if anchor is None:
+            # Resolve against the expanded haystack (so "q1" -> "quan 1" resolves, FR-2)
+            # plus the raw query for diacritic compatibility (Fix 1: 'phở có' won't
+            # anchor to Phố Cổ).
+            anchor = self.gazetteer.resolve(hay, text)
         if anchor:
             consumed.update(fold(anchor.name).split())
         # Lift any district reference into the structured field, token-boundary + diacritic-

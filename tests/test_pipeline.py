@@ -20,6 +20,15 @@ def test_anchor_gate_keeps_near_anchor_on_top(pipe):
     assert all(r.poi.city == "Hà Nội" for r in results[:3])
 
 
+def test_coordinate_anchor_gates_to_hcmc_cafes(pipe):
+    # 'gần 10.7738, 106.704' is a Quận 1, HCMC point (SPEC §7.1; PRD FR-2). Cafés near
+    # it must top the lineup; other-city cafés (600+ km away) drop to the tail.
+    _, results = pipe.search("quán cà phê gần 10.7738, 106.704", k=5)
+    assert results
+    assert all(r.poi.category == "Quán cà phê" for r in results[:3])
+    assert all(r.poi.city == "TP.HCM" for r in results[:3])
+
+
 def test_no_anchor_query_unaffected(pipe):
     # a query with no location anchor still returns quiet work cafés on top
     _, results = pipe.search("quán cà phê yên tĩnh để làm việc", k=3)
