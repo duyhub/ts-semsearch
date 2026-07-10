@@ -62,6 +62,33 @@ def test_generic_adjective_is_stopword(parser):
     assert intent.content_terms == []
 
 
+def test_price_cheap_intent_parsed(parser):
+    # "cafe rẻ nhất" (cheapest café): price direction = cheap; 'nhất' handled downstream.
+    intent = parser.parse("cafe rẻ nhất")
+    assert intent.category == "Quán cà phê"
+    assert intent.price_pref == "cheap"
+
+
+def test_price_expensive_intent_parsed(parser):
+    intent = parser.parse("nhà hàng sang trọng")
+    assert intent.category == "Nhà hàng"
+    assert intent.price_pref == "expensive"
+
+
+def test_price_binh_dan_is_cheap(parser):
+    assert parser.parse("quán ăn bình dân").price_pref == "cheap"
+
+
+def test_dat_booking_not_read_as_expensive(parser):
+    # folded "đặt" (to book) collides with "đắt" (expensive) — must NOT fire price.
+    intent = parser.parse("đặt bàn nhà hàng")
+    assert intent.price_pref is None
+
+
+def test_no_price_word_leaves_pref_none(parser):
+    assert parser.parse("cafe yên tĩnh để làm việc").price_pref is None
+
+
 def test_abbrev_district_resolves_anchor_and_district(parser):
     # "q1 tphcm" (abbreviated) must resolve to the Quận 1 district anchor and
     # populate intent.district — previously the folded "q1" never matched the

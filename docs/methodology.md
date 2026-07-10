@@ -10,7 +10,7 @@ explanations, and how we measure it. Numbers below are reproduced by
 query ─▶ normalize (fold diacritics, expand abbreviations/slang, q-numbers)
       ─▶ parse intent (category, attributes, location anchor, subject, time)   [rule-based]
       ─▶ retrieve: BM25 (folded tokens) + dense (bge-m3) ──RRF──▶ hybrid relevance
-      ─▶ re-rank ALL POIs by 8 interpretable signals (semantic = hybrid relevance)
+      ─▶ re-rank ALL POIs by 9 interpretable signals (semantic = hybrid relevance)
       ─▶ hard-constraint filter, relaxing (pure category / location / subject)
       ─▶ explanations (reasons derived only from true signal values)
 ```
@@ -32,7 +32,7 @@ survives — so they enforce "only" without deleting recall or ever returning em
 A coverage gate (fire the category filter only when the parse fully explains the
 query) keeps mis-parses like "nơi mua sắm có nhiều nhà hàng…" from over-filtering.
 
-## The 8 signals — 7 map 1:1 to the sponsor's `Ranking_Signals`, + `category`
+## The 9 signals — 6 map 1:1 to the sponsor's `Ranking_Signals`, + `category` + `price`
 
 | Sponsor signal | Our signal | Definition |
 |---|---|---|
@@ -44,12 +44,16 @@ query) keeps mis-parses like "nơi mua sắm có nhiều nhà hàng…" from ove
 | `business_attributes` | **attributes** + **open_now** | taxonomy attribute match, plus the time dimension: open at the (injected) query time, handling `24/7` and overnight hours |
 | `freshness_score` | — (documented) | **not implementable** on this dataset (no recency field); a production roadmap item |
 | — (our addition) | **category** | 1.0 if the POI matches the parsed category intent, 0.0 on mismatch, 0.5 when no category is parsed — a category-consistency prior so malls/gas stations don't outrank cafés on a "cà phê" query |
+| — (our addition) | **price** | affordability preference from `price_level` (1–4): a cheap intent (`rẻ`/`bình dân`) scores cheaper POIs high, an upscale intent (`sang`/`cao cấp`) inverts it; **neutral 0.5 when the query names no price**, so price-less queries are unaffected |
 
 Six of the seven sponsor signals are implemented (business_attributes splits into
 the structured-attribute match and the open-now time check); `freshness` is
-explicitly accounted for rather than faked. We add one signal beyond the
-sponsor's list — **category** — for category-consistency, so the ranker weighs
-**8 signals** in total. Every result keeps a per-signal breakdown, which powers
+explicitly accounted for rather than faked. We add two signals beyond the
+sponsor's list — **category** (category-consistency) and **price** (affordability
+preference) — so the ranker weighs **9 signals** in total. `price` carries a fixed
+weight (0.20) rather than a tuned one: only 2 of the 60 eval queries express a price
+intent, too few to tune on without over-fitting (NFR-6), and it is neutral on every
+query that names no price. Every result keeps a per-signal breakdown, which powers
 both the UI bars and the explanations.
 
 ## Explanations (faithful by construction)
@@ -67,8 +71,10 @@ by the data, so a hallucinated reason cannot ship (`tests/test_explain.py`).
   `data/eval_split.json`.
 - **Integrity (NFR-6):** the test split never influences code, weights, or
   vocabularies. Weights are tuned on **tune only** via regularized coordinate
-  ascent (coarse grid, minimum-improvement margin, 0.05 floor so all 8 signals
-  stay live). Test is evaluated **once per milestone**. A test
+  ascent (coarse grid, minimum-improvement margin, 0.05 floor so all 8 tuned
+  signals stay live). The 9th signal, `price`, carries a fixed 0.20 weight — not
+  eval-tuned, since only 2/60 queries express price intent. Test is evaluated
+  **once per milestone**. A test
   (`tests/test_integrity.py`) asserts no eval-query→POI mapping is hardcoded in
   `src/` and that the splits never overlap.
 - **Metrics:** Recall@3/5, NDCG@5 (graded gains 3/2/1), MRR, reported overall

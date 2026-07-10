@@ -5,7 +5,7 @@
 Deck arc (SPEC/PLAN): **problem → live demo → architecture → metrics/ablation → integration-readiness → roadmap.**
 All numbers below are the fresh, post-hard-constraints figures from `reports/*.json` (test split held out; never tuned on).
 
-**Ranking is 8 interpretable signals — 7 mapping 1:1 to Tasco's published `Ranking_Signals`, plus a `category`-fit signal we added.** (Of the sponsor's 7, six are implemented and the 7th, `freshness`, is documented-but-not-implementable — no recency field in the dataset.)
+**Ranking is 9 interpretable signals — 6 of Tasco's 7 published `Ranking_Signals` implemented, plus `category`-fit and `price`-preference signals we added.** (`business_attributes` splits into `attributes` + `open_now`; the 7th sponsor signal, `freshness`, is documented-but-not-implementable — no recency field in the dataset.)
 
 **The five official judging dimensions** (`docs/Q&A.md`) — every slide is tagged with the ones it serves:
 
@@ -50,12 +50,12 @@ Judges said IR metrics are **optional** — which is exactly why we bring them: 
 - **Visual:** switch to `http://127.0.0.1:8000/` — the two-column UI with the chip row.
 
 ### Slide 5 — Why our ranking is interpretable  · `D2 D3`
-- **8 interpretable signals — 7 mapped 1:1 to the sponsor's published `Ranking_Signals` sheet, plus a `category`-fit signal we added.** The seven sponsor-aligned ones, nothing invented: `semantic`←relevance, `attributes`←business_attributes, `distance`←distance, `rating`←rating (Bayesian-smoothed), `popularity`←popularity, `open_now`←business_attributes (time), `review`←review_signal (tags/description).
-- **Our addition — `category` (a category-consistency prior):** 1.0 when the POI matches the parsed category, 0.0 on mismatch, 0.5 when no category is parsed (so discovery/intent queries are unaffected). It's a *soft* signal, not a filter — it fixed a bug where malls and gas stations outranked cafés on a "cà phê" query, without banishing a true answer when the parser mis-categorizes. We present it transparently as ours, not as a sponsor signal.
+- **9 interpretable signals — 6 of the sponsor's 7 published `Ranking_Signals` implemented, plus `category`-fit and `price`-preference signals we added.** The sponsor-aligned ones, nothing invented: `semantic`←relevance, `attributes`←business_attributes, `distance`←distance, `rating`←rating (Bayesian-smoothed), `popularity`←popularity, `open_now`←business_attributes (time), `review`←review_signal (tags/description) — `business_attributes` powers two of ours (`attributes` + `open_now`).
+- **Our additions — `category` and `price`:** `category` is a category-consistency prior (1.0 on category match, 0.0 on mismatch, 0.5 when none parsed) — a *soft* signal, not a filter, that fixed malls/gas stations outranking cafés on "cà phê" without banishing a true answer on a mis-parse. `price` is an affordability preference from `price_level` (cheaper floats up on `rẻ`/`bình dân`, pricier on `sang`/`cao cấp`; neutral when no price is named) — it carries a fixed 0.20 weight, not a tuned one, since only 2/60 eval queries mention price. Both are presented transparently as ours, not sponsor signals.
 - The sponsor's 7th listed signal, **`freshness`, is honestly disposed of**: the dataset has no recency field, so it's documented as a production roadmap item. Of the sponsor's seven, **six are implemented + freshness documented** — every sponsor signal is implemented *or* explicitly accounted for.
-- **Every result carries a per-signal score breakdown** (top-3 bars on the card, expand to all 8) + **1–4 Vietnamese reasons** — and each reason is traceable to a real value ("✓ yên tĩnh", "cách Hồ Gươm 820 m", "4.7★ · 940 đánh giá", "mở đến 22:30"). The LLM only phrases; it never invents facts.
+- **Every result carries a per-signal score breakdown** (top-3 bars on the card, expand to all 9) + **1–4 Vietnamese reasons** — and each reason is traceable to a real value ("✓ yên tĩnh", "cách Hồ Gươm 820 m", "4.7★ · 940 đánh giá", "mở đến 22:30"). The LLM only phrases; it never invents facts.
 - Kills the hallucination question before it's asked: explanations are auditable, not generated prose.
-- **Visual:** one result card, top-3 colored signal bars, the "▾ Xem đủ 8 tín hiệu" expander open; a small table mapping our 7 sponsor-aligned signals 1:1 to the sponsor's list, with `category` shown as our labeled addition.
+- **Visual:** one result card, top-3 colored signal bars, the "▾ Xem đủ 9 tín hiệu" expander open; a small table mapping our sponsor-aligned signals to the sponsor's list, with `category` and `price` shown as our labeled additions.
 
 ### Slide 6 — The measurement edge (THE WIN)  · `D1 D2`
 - **Almost no hackathon team reports real IR metrics.** We do — on a **held-out test split** (stratified 40 tune / 20 test, committed seed) the code and weights **never** touched.
@@ -130,9 +130,9 @@ Judges said IR metrics are **optional** — which is exactly why we bring them: 
 > **Say:** *"Same query, two engines. Keyword on the left matches words — it doesn't know what 'quiet café to work from' means. Our semantic engine on the right returns exactly that: quiet, work-friendly cafés — with the reasons right on the card."*
 
 > **0:35 — Step 2 · Audit a result (breakdown + reasons)** *(no typing)*
-> **Do:** on the **#1 semantic card** (e.g. *Tranquil Books & Coffee*), point to the reason line, then click **"▾ Xem đủ 8 tín hiệu"**.
+> **Do:** on the **#1 semantic card** (e.g. *Tranquil Books & Coffee*), point to the reason line, then click **"▾ Xem đủ 9 tín hiệu"**.
 > **Point at:** the reason chips **"✓ yên tĩnh, ✓ phù hợp làm việc · 4.7★ · mở đến 22:30"**, then the top-3 signal bars expanding to all 8.
-> **Say:** *"Every result is explainable. These bars are our eight ranking signals — seven mapped one-to-one to Tasco's published list, plus a category-fit signal we added — and every reason is a real value, not generated prose. This is why it can't hallucinate: it only says what it can prove."*
+> **Say:** *"Every result is explainable. These bars are our nine ranking signals — six mapped to Tasco's published list, plus category-fit and price-preference signals we added — and every reason is a real value, not generated prose. This is why it can't hallucinate: it only says what it can prove."*
 
 > **1:10 — Step 3 · Intent with no category word** *(chip)*
 > **Do:** tap the chip **"nơi hẹn hò lãng mạn có view đẹp"**.

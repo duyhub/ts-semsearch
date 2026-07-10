@@ -93,6 +93,41 @@ def test_genuine_proper_name_query_still_returns_it(pipe):
     assert results[0].poi.name == "Công viên Thống Nhất"
 
 
+def test_cheapest_cafe_ranks_above_priciest(pipe):
+    # "cafe rẻ nhất": among the returned cafés, a cheaper one must outrank a pricier one
+    # (the price signal honors the affordability intent). Also: no park hijack.
+    _, results = pipe.search("cafe rẻ nhất", k=10)
+    assert results
+    assert all(r.poi.category == "Quán cà phê" for r in results)
+    prices = [r.poi.price_level for r in results]
+    # the top result is not the most expensive tier present
+    assert results[0].poi.price_level <= min(prices) + 1
+    # a level-1 café outranks a level-4 café when both are returned
+    levels = {r.poi.price_level: i for i, r in enumerate(results)}  # first index per level
+    if 1 in levels and 4 in levels:
+        assert levels[1] < levels[4]
+
+
+def test_expensive_intent_prefers_pricier(pipe):
+    _, results = pipe.search("nhà hàng sang trọng", k=10)
+    assert results
+    top_levels = [r.poi.price_level for r in results[:3]]
+    assert max(top_levels) >= 3  # pricey restaurants surface for an upscale intent
+
+
+def test_no_price_word_ranking_unaffected(pipe):
+    # constant-neutral property: with no price intent, zeroing the price weight must
+    # not change the ranking (price_signal is 0.5 for every POI).
+    ids_on = pipe.rank_ids("cafe yên tĩnh để làm việc")
+    saved = pipe.ranker.weights
+    pipe.ranker.weights = {**saved, "price": 0.0}
+    try:
+        ids_off = pipe.rank_ids("cafe yên tĩnh để làm việc")
+    finally:
+        pipe.ranker.weights = saved
+    assert ids_on == ids_off
+
+
 def test_impossible_strict_query_still_nonempty(pipe):
     # a district that doesn't exist -> relaxation keeps the result non-empty (G5).
     assert pipe.rank_ids("cafe quận 99 nowhere")
