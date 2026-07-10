@@ -18,6 +18,7 @@ as a real setup check for the AWS bonus track.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -61,10 +62,13 @@ def classify_sts_failure(exc: Exception) -> str:
         return "rejected"
     return "network"
 
-# Claude on Bedrock: APAC cross-region inference profile first, then the global id.
+# Claude on Bedrock: same chain the parser walks (env override first, used verbatim).
+_env_claude = os.environ.get("SEMSEARCH_BEDROCK_CLAUDE")
 CLAUDE_MODEL_IDS = (
-    "apac.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "anthropic.claude-haiku-4-5-20251001-v1:0",
+    (_env_claude,) if _env_claude
+    else ("apac.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "anthropic.claude-haiku-4-5-20251001-v1:0")
 )
 COHERE_MODEL_ID = "cohere.embed-multilingual-v3"
 TITAN_MODEL_ID = "amazon.titan-embed-text-v2:0"
@@ -118,7 +122,13 @@ def _run_check(label: str, model_hint: str, fn, client) -> bool:
         return ok
     except Exception as exc:  # noqa: BLE001 - report, don't crash
         print(f"  FAIL  {label:<26} {type(exc).__name__}: {exc}")
-        print(f"        fix: enable access to {model_hint} at {MODEL_ACCESS_URL}")
+        if "model identifier is invalid" in str(exc):
+            # Not an access problem: the model does not exist in this region at all
+            # (e.g. Titan v2 is absent from ap-southeast-1; Cohere is the primary there).
+            print(f"        fix: {model_hint} is not offered in this region — use another "
+                  "region (SEMSEARCH_BEDROCK_REGION) or skip it; this provider is optional.")
+        else:
+            print(f"        fix: enable access to {model_hint} at {MODEL_ACCESS_URL}")
         return False
 
 

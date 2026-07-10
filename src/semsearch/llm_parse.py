@@ -36,12 +36,17 @@ from .parse import ATTRIBUTE_KEYWORDS, CATEGORY_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
-# Model id: env override, else the APAC cross-region inference profile. The account may
-# not have that profile provisioned, so `_converse` retries once on the plain global id
-# when converse rejects the profile with a ValidationException about the model id.
+# Model id: env override, else a fallback chain of ids for the same model. Accounts differ
+# in which inference profiles exist (verified live on the AABW account: no apac. profile for
+# Haiku 4.5, but the global. profile works, and the plain id is rejected with "on-demand
+# throughput isn't supported"), so `_converse` walks the chain on ValidationExceptions that
+# mention the model id.
 CLAUDE_MODEL_ENV = "SEMSEARCH_BEDROCK_CLAUDE"
 DEFAULT_CLAUDE_MODEL = "apac.anthropic.claude-haiku-4-5-20251001-v1:0"
-FALLBACK_CLAUDE_MODEL = "anthropic.claude-haiku-4-5-20251001-v1:0"
+FALLBACK_CLAUDE_MODELS = (
+    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "anthropic.claude-haiku-4-5-20251001-v1:0",
+)
 
 # HARD RULE (CLAUDE.md): Bedrock calls carry a timeout so a dead network fails fast, never
 # hangs the demo. Parse sits in the request path, so the read timeout is short (~3s) and
@@ -200,10 +205,10 @@ class LLMParser:
 
     def _model_ids(self) -> list[str]:
         ids = [self.model_id]
-        # Only the APAC profile has a distinct global fallback id; a user-set model id is
-        # used verbatim (no guessing a fallback).
+        # Only the default chain gets fallbacks; a user-set model id is used verbatim
+        # (no guessing a fallback).
         if self.model_id == DEFAULT_CLAUDE_MODEL:
-            ids.append(FALLBACK_CLAUDE_MODEL)
+            ids.extend(FALLBACK_CLAUDE_MODELS)
         return ids
 
     def _converse(self, query: str) -> str:
