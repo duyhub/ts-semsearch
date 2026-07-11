@@ -55,6 +55,28 @@ def test_canonicalize_refuses_ambiguous_and_short():
     assert canonicalize("zzzz", ["wifi", "cafe"]) is None
 
 
+def test_canonicalize_treats_adjacent_transposition_as_one_edit():
+    # An adjacent transposition (right letters, wrong order) is a SINGLE edit
+    # (optimal string alignment / Damerau), which plain Levenshtein (distance 2)
+    # would miss. The SPEC §3 canonical example 'yen tihn' -> 'yen tinh' and the
+    # category typo 'hnag' -> 'hang' are exactly transpositions.
+    assert canonicalize("tihn", ["tinh"]) == "tinh"
+    assert canonicalize("hnag", ["hang", "nhac"]) == "hang"
+
+
+def test_canonicalize_prefers_transposition_over_substitution():
+    # 'tihn' is a transposition of 'tinh' AND a substitution of 'tien'. A
+    # transposition preserves the character multiset, so it is higher-confidence:
+    # it wins instead of the match being refused as ambiguous. This is what lets
+    # PRD FR-3 'cafe yen tihn' resolve to the yên tĩnh attribute rather than 'tiền'.
+    assert canonicalize("tihn", ["tinh", "tien"]) == "tinh"
+
+
+def test_canonicalize_refuses_two_transposition_candidates():
+    # Two distinct transposition candidates -> genuinely ambiguous -> still refuse.
+    assert canonicalize("abdc", ["badc", "abcd"]) is None
+
+
 # --- Fix 1: diacritic-compatible, token-boundary matching (compat_token_seq) ---
 
 def test_compat_token_seq_diacritic_conflict_rejects():

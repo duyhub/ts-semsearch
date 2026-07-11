@@ -15,6 +15,8 @@ from .data import POI, QueryIntent, content_tokens
 from .geo import Gazetteer, detect_coordinate_anchor
 from .normalize import (
     STOPWORDS,
+    canonicalize,
+    common_word_folds,
     expand_query,
     fold,
     query_common_tokens,
@@ -94,11 +96,74 @@ class Parser:
         for p in pois:
             self._df.update(content_tokens(p))
 
+        # --- Typo-correction vocabularies (PRD FR-3; SPEC §3) --------------------
+        # TARGET = the closed structured vocabularies a typo may be corrected TOWARD:
+        # category keyword tokens, attribute keyword tokens, and gazetteer LOCATION
+        # names (cities, curated landmarks, district names). Multi-word keys
+        # contribute their individual folded tokens (canonicalize matches token-wise).
+        target: set[str] = set()
+        for kw in CATEGORY_KEYWORDS:
+            target.update(fold(kw).split())
+        for kw in ATTRIBUTE_KEYWORDS:
+            target.update(fold(kw).split())
+        for fkey in self.city_vocab:  # folded city forms (e.g. "tp hcm")
+            target.update(fkey.split())
+        for _lat, _lon, disp in gazetteer.landmarks.values():
+            target.update(fold(disp).split())
+        for _lat, _lon, disp in gazetteer.districts.values():
+            target.update(fold(disp).split())
+        self._correct_target: frozenset[str] = frozenset(target)
+        # KNOWN = every folded token the parser already RECOGNIZES, hence "not a typo":
+        # the correction targets PLUS POI-name tokens (so a distinctive subject like
+        # 'Chay'/'Quảng'/'Bạch' — a real POI-name word one edit from a vocab token — is
+        # never force-corrected, SPEC §6 subject preservation), stopwords, and the
+        # vendored Vietnamese common words (so 'phòng'/'trên'/'đoàn' stay put). Fuzzy
+        # correction fires ONLY for out-of-vocabulary tokens (len >= 4) not in KNOWN.
+        known: set[str] = set(target)
+        for _lat, _lon, disp in gazetteer.poi_names.values():
+            known.update(fold(disp).split())
+        known.update(STOPWORDS)
+        known.update(common_word_folds())
+        self._correct_known: frozenset[str] = frozenset(known)
+
+    def _typo_corrections(self, *token_lists: Sequence[str]) -> dict[str, str]:
+        """Map each OOV query token to its unique edit-1 canonical form (PRD FR-3).
+
+        A token is a correction candidate only if it is len >= 4 AND not already a
+        RECOGNIZED word (self._correct_known — vocab/POI/stopword/common). Candidates
+        are fuzzy-matched against the structured TARGET vocabulary via canonicalize
+        (unique edit-1, transposition-preferring, ambiguity-refusing). The returned
+        map is applied to the match haystack only — never to the echo/subject fields.
+        """
+        corr: dict[str, str] = {}
+        seen: set[str] = set()
+        for toks in token_lists:
+            for t in toks:
+                if t in seen:
+                    continue
+                seen.add(t)
+                if len(t) < 4 or t in self._correct_known:
+                    continue
+                c = canonicalize(t, self._correct_target)
+                if c is not None and c != t:
+                    corr[t] = c
+        return corr
+
     def parse(self, text: str) -> QueryIntent:
         folded = fold(text)
+        folded_tokens = folded.split()
         exp_tokens = expand_query(text)
-        expanded = " ".join(exp_tokens)
-        hay = f" {expanded} {folded} "
+        expanded = " ".join(exp_tokens)  # echo field: keeps ORIGINAL (typo'd) tokens
+        # Fuzzy-correct OOV typo tokens onto the closed vocabularies (PRD FR-3; SPEC §3).
+        # The correction feeds category/attribute/location matching ONLY: it rewrites the
+        # haystack but NOT intent.raw/normalized, and the residual/subject derivation below
+        # works off the ORIGINAL tokens, so a distinctive subject is never rewritten into a
+        # vocab word ('cafe yen tihn' -> attribute yên tĩnh; a real subject like 'bạch' is
+        # left untouched because it is a recognized word).
+        corr = self._typo_corrections(exp_tokens, folded_tokens)
+        exp_corrected = " ".join(corr.get(t, t) for t in exp_tokens)
+        folded_corrected = " ".join(corr.get(t, t) for t in folded_tokens)
+        hay = f" {exp_corrected} {folded_corrected} "
         consumed: set[str] = set()  # tokens explained by a recognized vocab element
 
         category = None
@@ -170,7 +235,11 @@ class Parser:
         common = query_common_tokens(text)
         residual = [
             t for t in dict.fromkeys(exp_tokens)
-            if t not in consumed and t not in STOPWORDS and t not in common
+            # a corrected token counts as explained if its CANONICAL form was consumed,
+            # so a typo the parse resolved ('tihn' -> 'tinh') never leaks into residual —
+            # while an uncorrected token (corr.get(t, t) == t) behaves exactly as before.
+            if t not in consumed and corr.get(t, t) not in consumed
+            and t not in STOPWORDS and t not in common
             and len(t) >= 2 and not t.isdigit()
         ]
         content_terms = [

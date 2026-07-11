@@ -107,6 +107,9 @@ def _offline_llm(monkeypatch, tmp_path):
     monkeypatch.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv(L.OPENAI_MODEL_ENV, raising=False)
+    # Clear the LLM degradation gate so every test defaults to "auto" (the degradation gate);
+    # gate-specific tests set SEMSEARCH_LLM_GATE explicitly before constructing the pipeline.
+    monkeypatch.delenv("SEMSEARCH_LLM_GATE", raising=False)
     monkeypatch.setattr(L, "_REPO_ROOT", tmp_path / "no-repo")
     # Isolate the LLM disk cache per test: module-scoped fixtures reuse the SAME query text
     # with DIFFERENT fake clients, and a shared cache would serve one test's parse to another.
@@ -992,6 +995,10 @@ def gate_pipe(pois):
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
             mp.delenv("OPENAI_API_KEY", raising=False)
+            # Force the LLM gate to "always" so these clean-query gate tests keep exercising a
+            # real per-query LLM call — under the "auto" default they would be gated OFF (the
+            # degradation gate is covered by its own tests below).
+            mp.setenv("SEMSEARCH_LLM_GATE", "always")
             mp.setattr(L, "_REPO_ROOT", Path("/nonexistent-semsearch-tests"))  # hide real .env/
             mp.setattr(L.LLMParser, "_make_openai_client", staticmethod(_no_openai_client))
             pipe = FullPipeline(pois, mode="local")
@@ -1188,6 +1195,7 @@ def gate_app(pois):
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
             mp.delenv("OPENAI_API_KEY", raising=False)
+            mp.setenv("SEMSEARCH_LLM_GATE", "always")  # clean-query API tests must still call
             mp.setattr(L, "_REPO_ROOT", Path("/nonexistent-semsearch-tests"))  # hide real .env/
             mp.setattr(L.LLMParser, "_make_openai_client", staticmethod(_no_openai_client))
             app = create_app(pois, prewarm=False, mode="local")
@@ -1306,3 +1314,112 @@ def test_prefer_openai_skips_bedrock_entirely(monkeypatch):
     parser = L.LLMParser(prefer="openai")
     assert parser._provider == "openai" and parser._client is not None
     assert len(calls) == 1  # the single eager ping; no bedrock walk happened
+
+
+# --------------------------------------------------------------------------- #
+# Degradation gate (SEMSEARCH_LLM_GATE): with the LLM parse ON, the "auto"      #
+# default SKIPS the ~1.7s call for a CLEAN, in-vocab query (byte-identical to   #
+# the LLM-off path) and fires ONLY for a degraded query — no diacritics, a      #
+# long out-of-vocab token, or an English/mixed-language word. "always" forces   #
+# the call for every query. Pure function of query text + the static lexicon    #
+# (NFR-5 deterministic). gate defaults to "auto" (autouse `_offline_llm` clears  #
+# SEMSEARCH_LLM_GATE); each pipeline is fresh via `_pipe_llm_on`.               #
+# --------------------------------------------------------------------------- #
+def test_gate_auto_clean_in_vocab_query_skips_llm(pois, monkeypatch):
+    """A clean, diacritic'd, in-vocab query makes ZERO LLM calls under the auto gate: the
+    intent is byte-identical to the plain rule parse (corrected_query None) and NOTHING is
+    written to the LLM disk cache (no call happened at all)."""
+    pipe = _pipe_llm_on(pois, monkeypatch)  # gate defaults to "auto"
+    assert pipe._llm_gate == "auto"
+    client = FakeConverseClient(_llm_json(attributes=["wifi"]))  # would merge wifi IF called
+    pipe._llm_parser._client = client
+    q = "cà phê yên tĩnh"                      # diacritics present, all long tokens in-vocab
+    intent = pipe.resolve_intent(q)
+    assert len(client.calls) == 0              # gated OFF: the LLM was never called
+    assert intent == pipe.parser.parse(q)      # byte-identical to the rule parse
+    assert intent.corrected_query is None
+    assert "wifi" not in intent.required_attrs  # the injected enrichment never merged
+    assert not L.LLMCACHE_DIR.exists()          # gated-off queries make no cache entries
+
+
+def test_gate_auto_no_diacritics_calls_llm(pois, monkeypatch):
+    """A query with NO Vietnamese diacritic at all (likely diacritic-stripped typing) trips
+    the gate -> exactly one LLM call, and its enrichment merges through."""
+    pipe = _pipe_llm_on(pois, monkeypatch)
+    client = FakeConverseClient(_llm_json(attributes=["wifi"]))
+    pipe._llm_parser._client = client
+    intent = pipe.resolve_intent("quan cafe")   # no diacritic anywhere -> degradation signal
+    assert len(client.calls) == 1
+    assert "wifi" in intent.required_attrs       # the LLM ran and merged
+
+
+def test_gate_auto_oov_long_token_calls_llm(pois, monkeypatch):
+    """A diacritic'd query carrying a long out-of-vocab token ('wjfi', a typo) trips the
+    gate even though diacritics are present."""
+    pipe = _pipe_llm_on(pois, monkeypatch)
+    client = FakeConverseClient(_llm_json())
+    pipe._llm_parser._client = client
+    pipe.resolve_intent("quán cà phê wjfi")     # 'wjfi' (len 4) is out-of-vocab
+    assert len(client.calls) == 1
+
+
+def test_gate_auto_mixed_language_calls_llm(pois, monkeypatch):
+    """Mixed-language: an English out-of-vocab word ('laptop') trips the gate even with
+    Vietnamese diacritics present elsewhere in the query."""
+    pipe = _pipe_llm_on(pois, monkeypatch)
+    client = FakeConverseClient(_llm_json())
+    pipe._llm_parser._client = client
+    pipe.resolve_intent("cà phê có laptop")   # diacritics present; 'laptop' is OOV English
+    assert len(client.calls) == 1
+
+
+def test_gate_always_forces_call_on_clean_query(pois, monkeypatch):
+    """SEMSEARCH_LLM_GATE=always restores today's behavior: even a clean, in-vocab query pays
+    the LLM call (useful when demoing the correction itself)."""
+    monkeypatch.setenv("SEMSEARCH_LLM_GATE", "always")
+    pipe = _pipe_llm_on(pois, monkeypatch)       # _pipe_llm_on leaves SEMSEARCH_LLM_GATE alone
+    assert pipe._llm_gate == "always"
+    client = FakeConverseClient(_llm_json(attributes=["wifi"]))
+    pipe._llm_parser._client = client
+    intent = pipe.resolve_intent("cà phê")       # clean query that "auto" would gate OFF
+    assert len(client.calls) == 1
+    assert "wifi" in intent.required_attrs
+
+
+def test_gate_unknown_env_value_warns_and_uses_auto(pois, monkeypatch, caplog):
+    """An unknown SEMSEARCH_LLM_GATE value logs a warning and behaves as 'auto' (never
+    silently forces every call): a clean in-vocab query is still gated OFF."""
+    monkeypatch.setenv("SEMSEARCH_LLM_GATE", "banana")
+    with caplog.at_level("WARNING"):
+        pipe = _pipe_llm_on(pois, monkeypatch)
+    assert pipe._llm_gate == "auto"
+    assert any("banana" in r.getMessage() for r in caplog.records)
+    client = FakeConverseClient(_llm_json(attributes=["wifi"]))
+    pipe._llm_parser._client = client
+    pipe.resolve_intent("cà phê")                # clean -> gated OFF under the auto fallback
+    assert len(client.calls) == 0
+
+
+def test_gate_off_query_byte_identical_to_llm_off_pipeline(pois, monkeypatch):
+    """A gated-off query's resolved intent equals the LLM-OFF pipeline's parse of the same
+    text — the auto gate's skip path is the same code path as SEMSEARCH_LLM_PARSE=off."""
+    pipe = _pipe_llm_on(pois, monkeypatch)       # LLM on, gate auto
+    pipe._llm_parser._client = FakeConverseClient(_llm_json(attributes=["wifi"]))
+    q = "cà phê yên tĩnh"                         # clean + in-vocab -> gated OFF
+
+    monkeypatch.delenv("SEMSEARCH_LLM_PARSE", raising=False)
+    off = FullPipeline(pois, mode="local")       # LLM parse entirely off
+    assert off._llm_parser is None
+    assert pipe.resolve_intent(q) == off.resolve_intent(q)
+
+
+def test_gate_decision_deterministic(pois, monkeypatch):
+    """`_needs_llm` is a pure function of the query text + the static lexicon: the same query
+    always yields the same decision, and the two signals resolve as documented (NFR-5)."""
+    pipe = _pipe_llm_on(pois, monkeypatch)
+    for q in ("cà phê", "quan cafe", "quán cà phê wjfi", "cà phê có laptop"):
+        assert pipe._needs_llm(q) is pipe._needs_llm(q)  # repeatable
+    assert pipe._needs_llm("cà phê") is False            # clean + in-vocab -> skip
+    assert pipe._needs_llm("quan cafe") is True          # no diacritics -> call
+    assert pipe._needs_llm("quán cà phê wjfi") is True   # OOV long token -> call
+    assert pipe._needs_llm("cà phê có laptop") is True   # OOV English word -> call

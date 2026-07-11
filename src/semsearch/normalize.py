@@ -169,15 +169,44 @@ def tokenize(s: str) -> list[str]:
     return [t for t in folded.split(" ") if t]
 
 
+def _is_adjacent_transposition(a: str, b: str) -> bool:
+    """True iff `a` becomes `b` by swapping exactly one adjacent pair of characters
+    (a Damerau transposition): same length, identical everywhere except two adjacent
+    positions that hold each other's character. Same letters, wrong order in one spot
+    — a higher-confidence typo signal than a substitution, which lets canonicalize
+    prefer 'tihn' -> 'tinh' over the substitution neighbour 'tien'."""
+    if len(a) != len(b):
+        return False
+    diffs = [i for i in range(len(a)) if a[i] != b[i]]
+    if len(diffs) != 2:
+        return False
+    i, j = diffs
+    return j == i + 1 and a[i] == b[j] and a[j] == b[i]
+
+
 def _levenshtein_le1(a: str, b: str) -> bool:
-    """True iff edit distance(a, b) <= 1. Cheap early-outs; no full DP needed."""
+    """True iff `a` and `b` are within a single edit — one substitution, insertion,
+    deletion, OR one adjacent transposition (optimal string alignment / Damerau-
+    Levenshtein distance <= 1).
+
+    Transposition is included because it is the single most common keyboard/Vietnamese
+    typo class AND the SPEC §3 canonical example ('yen tihn' -> 'yen tinh') is exactly a
+    transposition, which plain Levenshtein (distance 2) would miss. Cheap early-outs; no
+    full DP needed.
+    """
     if a == b:
         return True
     la, lb = len(a), len(b)
     if abs(la - lb) > 1:
         return False
-    if la == lb:  # single substitution
-        return sum(x != y for x, y in zip(a, b)) == 1
+    if la == lb:
+        diffs = [i for i in range(la) if a[i] != b[i]]
+        if len(diffs) == 1:  # single substitution
+            return True
+        if len(diffs) == 2:  # possibly one adjacent transposition
+            i, j = diffs
+            return j == i + 1 and a[i] == b[j] and a[j] == b[i]
+        return False
     # one insertion/deletion: walk the shorter against the longer
     if la > lb:
         a, b = b, a
@@ -200,18 +229,32 @@ def canonicalize(token: str, vocab: Sequence[str], *, max_edit: int = 1, min_len
     """Single fuzzy-match primitive (C2). Return the canonical vocab term for
     `token`, or None if no confident match.
 
-    Exact match wins. Fuzzy (edit distance <= max_edit) only fires for tokens of
-    length >= min_len, and ONLY when the match is UNAMBIGUOUS — if the token is
-    within max_edit of two different vocab terms, we refuse (return None) rather
-    than risk mis-mapping a real word onto an unrelated one (the C2 precision
-    guard). `token` and `vocab` are expected already folded.
+    Exact match wins. Fuzzy (edit distance <= max_edit, incl. one adjacent
+    transposition) only fires for tokens of length >= min_len, and ONLY when the
+    match is UNAMBIGUOUS — if the token is within one edit of two different vocab
+    terms we refuse (return None) rather than risk mis-mapping a real word onto an
+    unrelated one (the C2 precision guard).
+
+    Tie-break by edit type: a transposition preserves the character multiset (right
+    letters, wrong order), so it is a higher-confidence correction than a
+    substitution/indel. When both kinds of candidate exist we prefer a UNIQUE
+    transposition, falling back to the general edit-1 set only when no candidate is a
+    transposition. This lets the SPEC example 'tihn' -> 'tinh' win over the
+    substitution neighbour 'tien' without weakening the ambiguity guard for
+    same-edit-type collisions ('banh' -> {binh, benh, hanh} -> refuse).
+
+    `token` and `vocab` are expected already folded.
     """
     if token in vocab:
         return token
     if max_edit < 1 or len(token) < min_len:
         return None
     hits = [v for v in vocab if len(v) >= min_len and _levenshtein_le1(token, v)]
-    return hits[0] if len(hits) == 1 else None
+    if not hits:
+        return None
+    transposed = [v for v in hits if _is_adjacent_transposition(token, v)]
+    tier = transposed or hits
+    return tier[0] if len(tier) == 1 else None
 
 
 def expand_query(text: str) -> list[str]:
@@ -272,6 +315,17 @@ def _vi_common_by_fold() -> dict[str, tuple[str, ...]]:
             if key:
                 by_fold.setdefault(key, []).append(unicodedata.normalize("NFC", word).lower())
     return {k: tuple(v) for k, v in by_fold.items()}
+
+
+@lru_cache(maxsize=1)
+def common_word_folds() -> frozenset[str]:
+    """Folded forms of every vendored Vietnamese common word (the Fix 2 resource).
+
+    Exposed so callers (the parser's typo corrector, PRD FR-3) can treat any recognized
+    common word as NOT-a-typo: a query token that IS a common Vietnamese word must never
+    be fuzzy-corrected onto an unrelated vocabulary term (e.g. 'phòng'/'trên' must not be
+    snapped to 'phường'/'tiền')."""
+    return frozenset(_vi_common_by_fold())
 
 
 def query_common_tokens(text: str) -> set[str]:
