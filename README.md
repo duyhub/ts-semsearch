@@ -13,7 +13,8 @@ and returns ranked results **with explanations**. Integration-ready with the Tas
 ## How it works
 
 ```
-query ─▶ normalize (fold diacritics, expand abbreviations) ─▶ parse intent (rules)
+query ─▶ normalize (fold diacritics, expand abbreviations, fix typos ≤1 edit)
+      ─▶ parse intent (rules)  [cloud: LLM corrected_query + intent, degraded input only]
       ─▶ BM25 + dense (bge-m3) ──RRF──▶ hybrid relevance
       ─▶ re-rank all POIs by 9 interpretable signals ─▶ faithful explanations
       ─▶ hard-constraint filter (pure category / location / subject) ─▶ never-empty
@@ -32,14 +33,20 @@ deployment mode.
 
 | Gate | Metric | Result | Threshold |
 |---|---|---|---|
-| G1 | BM25 Recall@5 (tune) | 0.917 | ≥ 0.55 |
-| G2 | hybrid NDCG@5 > max(bm25, dense) (tune) | 0.922 > 0.881 | > |
-| G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.963 / 0.983** | ≥ 0.80 / ≥ 0.75 |
-| G4 | warm p95 latency | 9.2 ms | < 200 ms |
+| G1 | BM25 Recall@5 (tune) | 0.929 | ≥ 0.55 |
+| G2 | hybrid NDCG@5 > max(bm25, dense) (tune) | 0.933 > 0.881 | > |
+| G3 | full NDCG@5 / Recall@3 (**held-out test**) | **0.962 / 0.983** | ≥ 0.80 / ≥ 0.75 |
+| G4 | warm p95 latency | 9.3 ms | < 200 ms |
 | G5 | robustness (60 eval + adversarial) | 138/138 | 0 failures |
 
+Tune-split NDCG@5 (full pipeline): **0.971**. Beyond the official gates, the engine is
+**stress-tested at 9× corpus density**: a deterministic 1000-POI superset (official 111 +
+889 seeded synthetic distractors) plus 150 labeled synthetic queries with ground truth by
+construction — warm p95 stays 57 ms at 1000 POIs, and typo-tolerance holds without any LLM
+([`reports/stress-1000.md`](reports/stress-1000.md), `uv run python scripts/stress_eval.py`).
+
 Reproduce: `uv run python scripts/report_metrics.py` → [`reports/metrics.md`](reports/metrics.md).
-Ablation, embedding choice, latency, sample queries: see [`reports/`](reports/).
+Ablation, embedding choice, latency, sample queries, stress: see [`reports/`](reports/).
 
 ## Requirements
 
@@ -148,8 +155,8 @@ parse is off/unavailable, so no measured path is affected.
 Remote hosting without the local model: `SEMSEARCH_MODE=cloud` plus AWS credentials
 (embeddings + Claude) and/or an OpenAI key (`OPENAI_API_KEY` or the gitignored
 `.env/OPENAI-API-key.txt`) for the LLM parse. `GET /health` reports what actually
-resolved (`mode`, `embeddings`, `llm_parse`); `uv run python scripts/check_bedrock.py`
-previews all three modes against live credentials.
+resolved (`mode`, `embeddings`, `llm_parse`, `llm_gate`, `query_rewrite`);
+`uv run python scripts/check_bedrock.py` previews all three modes against live credentials.
 
 ## Verify
 
