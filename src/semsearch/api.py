@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from dataclasses import replace
 from datetime import datetime
 from typing import Optional
 
@@ -26,9 +27,9 @@ from pydantic import BaseModel
 UI_DIR = Path(__file__).resolve().parents[2] / "ui"
 UI_INDEX = UI_DIR / "index.html"
 
-from .data import POI, load_pois
+from .data import POI, Anchor, load_pois
 from .explain import generate_reasons
-from .geo import haversine
+from .geo import COORD_ANCHOR_NAME, haversine
 from .pipeline import FullPipeline
 from .rank import DEFAULT_EVAL_NOW, load_weights
 
@@ -208,6 +209,14 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             # here + LLM-merged re-resolution inside rank_scored would contradict each other
             # whenever SEMSEARCH_LLM_PARSE=bedrock enriches the parse.
             intent = pipeline.resolve_intent(q)
+            # A location explicitly named/pasted in the query is more specific than the
+            # request focus. Otherwise, use the caller's current/selected location as the
+            # distance anchor so proximity affects ranking, explanations, and the intent echo.
+            if ref is not None and intent.anchor is None:
+                intent = replace(
+                    intent,
+                    anchor=Anchor(name=COORD_ANCHOR_NAME, lat=ref[0], lon=ref[1]),
+                )
             ranked = pipeline.rank_scored(q, intent=intent)  # full corpus, (id, score, breakdown)
 
         def _passes(poi: POI) -> bool:
@@ -233,11 +242,22 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         source = "semsearch"
         if not picked:  # C1/G5 backstop: a valid query never returns empty.
             # C5/D3: honour the caller's filters first — the fallback pool is the SAME
-            # category/bbox/radius window, by popularity. Only an impossible constraint
-            # (e.g. a mid-ocean bbox) drops to the global popularity list, still labelled
-            # source='fallback'. Deterministic: stable sort over the fixed load order.
-            by_pop = sorted(pipeline.pois, key=lambda p: p.popularity, reverse=True)
-            pool = [p for p in by_pop if _passes(p)] or by_pop
+            # category/bbox/radius window, nearest-first when a request focus exists and
+            # popularity-first otherwise. Only an impossible constraint (e.g. a mid-ocean
+            # bbox) drops to the global list, still labelled source='fallback'.
+            if ref is not None:
+                fallback_order = sorted(
+                    pipeline.pois,
+                    key=lambda p: (
+                        haversine(ref[0], ref[1], p.lat, p.lon),
+                        -p.popularity,
+                    ),
+                )
+            else:
+                fallback_order = sorted(
+                    pipeline.pois, key=lambda p: p.popularity, reverse=True
+                )
+            pool = [p for p in fallback_order if _passes(p)] or fallback_order
             picked = [(p, 0.0, {}) for p in pool[:limit]]
             source = "fallback"
         return intent, picked, source
@@ -255,6 +275,21 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
         rid = x_request_id or str(uuid.uuid4())
         if q is None or not q.strip():
             return None, _error(400, "query parameter 'q' is required", rid)
+        if (lat is None) != (lon is None):
+            missing = "lon" if lon is None else "lat"
+            return None, _error(
+                400,
+                "lat and lon must be supplied together",
+                rid,
+                details={"field": missing},
+            )
+        if radiusMeters is not None and (lat is None or lon is None):
+            return None, _error(
+                400,
+                "radiusMeters requires lat and lon",
+                rid,
+                details={"field": "radiusMeters"},
+            )
         if radiusMeters is not None and radiusMeters < 0:  # D5: a radius is a distance, not signed
             return None, _error(400, "radiusMeters must be >= 0", rid,
                                 details={"field": "radiusMeters"})
@@ -310,8 +345,16 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     def search(
         request: Request,
         q: Optional[str] = Query(None),
-        lat: Optional[float] = None, lon: Optional[float] = None,
-        radiusMeters: Optional[float] = None, bbox: Optional[str] = None,
+        lat: Optional[float] = Query(
+            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon"
+        ),
+        lon: Optional[float] = Query(
+            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat"
+        ),
+        radiusMeters: Optional[float] = Query(
+            None, ge=0, description="Optional radius filter; requires both lat and lon"
+        ),
+        bbox: Optional[str] = None,
         category: Optional[str] = None, limit: int = 10, lang: str = "vi",
         engine: str = "full",
         x_request_id: Optional[str] = Header(None),
@@ -336,8 +379,16 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     def semantic_search(
         request: Request,
         q: Optional[str] = Query(None),
-        lat: Optional[float] = None, lon: Optional[float] = None,
-        radiusMeters: Optional[float] = None, bbox: Optional[str] = None,
+        lat: Optional[float] = Query(
+            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon"
+        ),
+        lon: Optional[float] = Query(
+            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat"
+        ),
+        radiusMeters: Optional[float] = Query(
+            None, ge=0, description="Optional radius filter; requires both lat and lon"
+        ),
+        bbox: Optional[str] = None,
         category: Optional[str] = None, limit: int = 10, lang: str = "vi",
         x_request_id: Optional[str] = Header(None),
     ):

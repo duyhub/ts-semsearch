@@ -46,6 +46,13 @@ def test_gas_24_7_intent(parser):
     assert "24/7" in intent.required_attrs
 
 
+def test_tiem_xang_synonym_is_fully_consumed(parser):
+    intent = parser.parse("tiệm xăng gần nhất")
+    assert intent.category == "Trạm xăng"
+    assert intent.residual_terms == []
+    assert not intent.has_residual
+
+
 def test_non_accented_still_parses(parser):
     intent = parser.parse("quan cafe yen tinh")
     assert intent.category == "Quán cà phê"
