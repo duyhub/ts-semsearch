@@ -8,6 +8,10 @@
 # Change the hostname to a subdomain you control.
 # ─────────────────────────────────────────────────────────────────────────────
 tssemsearch.run.place {
+	basic_auth {
+		admin $2a$14$ca0pkCdYPSzWbIwOxjl4QutnbPL7R/niR4FgdLqs4bml0hd6vz7S
+	}
+
 	reverse_proxy semsearch:8000
 
 	header {
