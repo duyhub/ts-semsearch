@@ -19,8 +19,14 @@ import threading
 from datetime import datetime
 from typing import Sequence
 
+from .config import VALID_MODES, resolve_mode
 from .data import POI, QueryIntent, RankedResult, content_tokens
-from .embeddings import BEDROCK_PROVIDERS, get_embedder, resolve_provider
+from .embeddings import (
+    BEDROCK_PROVIDERS,
+    get_embedder,
+    is_no_credentials_error,
+    resolve_provider,
+)
 from .explain import generate_reasons
 from .geo import Gazetteer, haversine
 from .llm_parse import LLMParser, merge_intent
@@ -28,8 +34,13 @@ from .normalize import fold
 
 logger = logging.getLogger(__name__)
 
-# FR-4 / NFR-5: the LLM intent parse is OFF by default so /v1/search stays deterministic.
-# Setting SEMSEARCH_LLM_PARSE=bedrock layers a Claude parse on top of the rule parse.
+# FR-4 / NFR-5: the LLM intent parse defaults OFF in local/local-first modes (deterministic
+# /v1/search) and ON in cloud mode (remote hosting implies network). Explicit
+# SEMSEARCH_LLM_PARSE always wins:
+#   "bedrock" | "on" -> force ON (full resolution chain: Bedrock -> OpenAI)
+#   "openai"         -> force ON, pin OpenAI directly (skip all Bedrock probes)
+#   "off"            -> force OFF
+#   anything else    -> WARNING + off (never silently on)
 LLM_PARSE_ENV = "SEMSEARCH_LLM_PARSE"
 
 # When a query resolves an explicit location anchor, "gần X" must mean near X:
@@ -39,8 +50,9 @@ from .parse import Parser
 from .rank import DEFAULT_EVAL_NOW, DEFAULT_WEIGHTS, LinearRanker
 from .retrieve import BM25Index, DenseIndex, rrf_fuse
 
-RRF_C = 60
-RRF_MAX = 2.0 / (RRF_C + 1)  # best possible fused score (rank 1 in both lists)
+RRF_C = 60  # the fused-score calibration max is derived per query from the lists actually
+# fused: k non-empty lists -> max k/(RRF_C+1) (rank 1 in each). A fixed 2/(c+1) would
+# silently cap the semantic signal at 0.5 whenever dense is absent (BM25-only floor).
 
 # A parser "distinctive subject" term (rare in POI names, df<=2) may hard-filter the
 # results ONLY if the DENSE retriever corroborates it — a POI matching the term sits
@@ -62,27 +74,44 @@ def _review_tokens(p: POI) -> set[str]:
 
 class FullPipeline:
     def __init__(self, pois: Sequence[POI], *, weights: dict[str, float] | None = None,
-                 now: datetime | None = None, provider: str = "local"):
+                 now: datetime | None = None, provider: str | None = None,
+                 mode: str | None = None):
+        """`mode` selects the deployment posture — see src/semsearch/config.py.
+
+        Pinning contract (eval integrity): an EXPLICIT `mode=` argument FULLY pins the
+        pipeline — resolve_mode() is never called, so neither SEMSEARCH_MODE nor an edited
+        DEFAULT_MODE can reach it (an invalid explicit mode raises: programmer error). Only
+        `mode=None` env-resolves. An EXPLICIT `provider=` is the embeddings expert override
+        (skips mode resolution for embeddings); `mode` still governs the LLM-parse default,
+        which is why measurement entry points pin BOTH (provider='local', mode='local')."""
         self.pois = list(pois)
         self.by_id = {p.poi_id: p for p in self.pois}
-        # Coherent provider choice BEFORE building the index: a bedrock provider whose
-        # preflight fails (no creds/model access/timeout) degrades to local here, so the
-        # whole run stays in one vector space (A2) and the demo never depends on the network.
-        provider = resolve_provider(provider)
-        try:
-            self.dense = DenseIndex(self.pois, get_embedder(provider))
-        except Exception as exc:  # noqa: BLE001 - bedrock-only construction fallback
-            if provider not in BEDROCK_PROVIDERS:
-                raise  # a LOCAL build failure is a setup bug — propagate loudly
-            # The preflight only pings one string; the network can still drop DURING
-            # the 111-doc matrix build. Rebuild in the local space (one warning) so
-            # construction keeps the 'coherent for the entire run' guarantee.
-            logger.warning(
-                "Bedrock provider %r failed while building the doc matrix (%s: %s); "
-                "rebuilding with local bge-m3.",
-                provider, type(exc).__name__, exc,
-            )
-            self.dense = DenseIndex(self.pois, get_embedder("local"))
+        if mode is not None and mode not in VALID_MODES:
+            raise ValueError(f"invalid mode {mode!r} (valid: {', '.join(VALID_MODES)})")
+        self.mode = mode or resolve_mode()
+        self.dense: DenseIndex | None
+        if provider is not None:
+            # EXPERT OVERRIDE — exactly the pre-mode path. Coherent provider choice BEFORE
+            # building the index: a bedrock provider whose preflight fails (no creds/model
+            # access/timeout) degrades to local here, so the whole run stays in one vector
+            # space (A2) and the demo never depends on the network.
+            provider = resolve_provider(provider)
+            try:
+                self.dense = DenseIndex(self.pois, get_embedder(provider))
+            except Exception as exc:  # noqa: BLE001 - bedrock-only construction fallback
+                if provider not in BEDROCK_PROVIDERS:
+                    raise  # a LOCAL build failure is a setup bug — propagate loudly
+                # The preflight only pings one string; the network can still drop DURING
+                # the 111-doc matrix build. Rebuild in the local space (one warning) so
+                # construction keeps the 'coherent for the entire run' guarantee.
+                logger.warning(
+                    "Bedrock provider %r failed while building the doc matrix (%s: %s); "
+                    "rebuilding with local bge-m3.",
+                    provider, type(exc).__name__, exc,
+                )
+                self.dense = DenseIndex(self.pois, get_embedder("local"))
+        else:
+            self.dense = self._dense_for_mode(self.mode)
         self.bm25 = BM25Index(self.pois)
         self.gazetteer = Gazetteer(self.pois)
         self.parser = Parser(self.pois, self.gazetteer)
@@ -91,25 +120,105 @@ class FullPipeline:
         self._attrs = {p.poi_id: _attrs_folded(p) for p in self.pois}
         self._review = {p.poi_id: _review_tokens(p) for p in self.pois}
         self._content = {p.poi_id: content_tokens(p) for p in self.pois}  # subject-filter tokens
-        # FR-4 gate: construct the LLM parser only when opted in. Construction is lazy —
-        # no boto3 client / credential lookup until the first parse — so this is free when
-        # gated off, and the default path below executes exactly today's rule-only code.
-        self._llm_parser = LLMParser() if os.environ.get(LLM_PARSE_ENV) == "bedrock" else None
+        # FR-4 gate: cloud mode implies network, so the LLM parse defaults ON there; the
+        # other modes keep today's deterministic default (OFF). Explicit env always wins.
+        # `_llm_enabled_via` records HOW it was enabled, so the warn-once message tells a
+        # cloud operator about the mode default instead of an env var they never set.
+        llm_env = os.environ.get(LLM_PARSE_ENV)
+        llm_on, prefer = False, "auto"
+        if llm_env is None:
+            llm_on = self.mode == "cloud"
+            self._llm_enabled_via = "cloud mode default"
+        elif llm_env in ("bedrock", "on"):
+            llm_on = True
+            self._llm_enabled_via = f"{LLM_PARSE_ENV}={llm_env}"
+        elif llm_env == "openai":
+            llm_on, prefer = True, "openai"  # pin OpenAI directly, skip Bedrock probes
+            self._llm_enabled_via = f"{LLM_PARSE_ENV}=openai"
+        elif llm_env == "off":
+            self._llm_enabled_via = f"{LLM_PARSE_ENV}=off"
+        else:
+            logger.warning(
+                "unknown %s value %r (valid: off, on, bedrock, openai); LLM parse stays off.",
+                LLM_PARSE_ENV, llm_env,
+            )
+            self._llm_enabled_via = f"{LLM_PARSE_ENV}={llm_env} (unknown)"
+        self._llm_parser = LLMParser(prefer=prefer) if llm_on else None
         self._llm_warned = False  # log the "LLM unavailable" warning at most once
         self._llm_warn_lock = threading.Lock()  # latch is check-then-set; API serves threaded
 
+    def _dense_for_mode(self, mode: str) -> DenseIndex | None:
+        """Construction-time embeddings resolution per deployment mode — chosen ONCE,
+        coherent for the whole run (A2), every degradation logged loudly.
+
+        local:       today's behavior — local bge-m3; a failure raises (setup bug).
+        local-first: probe local FIRST (loads bge-m3 + one embed, so a broken host fails
+                     here, not mid-demo); on failure walk the cloud chain.
+        cloud:       NEVER touch local (remote hosting without the 2.3GB model);
+                     walk the cloud chain; all failing -> BM25-only floor (None)."""
+        if mode == "local":
+            return DenseIndex(self.pois, get_embedder("local"))
+        if mode == "local-first":
+            try:
+                emb = get_embedder("local")
+                emb.embed(["khởi động"])  # probe: load the model NOW, fail fast if broken
+                return DenseIndex(self.pois, emb)
+            except Exception as exc:  # noqa: BLE001 - degrade to cloud, LOUDLY
+                logger.warning(
+                    "mode=local-first: local embeddings unavailable (%s: %s); "
+                    "walking the cloud chain.", type(exc).__name__, exc,
+                )
+        return self._cloud_dense()
+
+    def _cloud_dense(self) -> DenseIndex | None:
+        """Walk the cloud embedding providers (bedrock-cohere, then bedrock-titan — each
+        already walks the region-fallback chain internally). First one whose probe + doc
+        build succeeds wins; everything failing lands on the BM25-only floor (dense=None),
+        loudly."""
+        for prov in BEDROCK_PROVIDERS:
+            try:
+                emb = get_embedder(prov)
+                # probe pins the provider's region (walks the chain) or raises
+                emb.embed(["khởi động"], input_type="search_query")
+                return DenseIndex(self.pois, emb)
+            except Exception as exc:  # noqa: BLE001 - try the next cloud provider
+                if is_no_credentials_error(exc):
+                    # Tradeoff: missing credentials are ACCOUNT-wide — probing the other
+                    # provider (x3 regions) can only burn more timeouts for the same answer,
+                    # so short-circuit straight to the floor. Network/model errors keep the
+                    # full provider walk (those CAN differ per provider/region).
+                    logger.warning(
+                        "cloud embeddings: no AWS credentials (%s) — skipping the remaining "
+                        "cloud providers.", type(exc).__name__,
+                    )
+                    break
+                logger.warning(
+                    "cloud embeddings provider %r unavailable (%s: %s); trying the next.",
+                    prov, type(exc).__name__, exc,
+                )
+        logger.warning(
+            "no embeddings provider available in mode %r; running the BM25-only floor "
+            "(keyword retrieval only — no dense semantic ranking).", self.mode,
+        )
+        return None
+
     def _relevance(self, query_text: str, intent: QueryIntent,
                    dense_ids: list[str]) -> dict[str, float]:
-        """Hybrid RRF relevance per POI, calibrated to [0,1] by a FIXED max (OV6:
-        not per-query min-max). A lifted district reference is stripped from the
-        BM25 query (quán/quận de-pollution) — location is carried by the distance
-        signal, not lexical token overlap. The dense side keeps the full query
-        (embeddings don't token-double-count); `dense_ids` is precomputed once by
-        the caller so corroboration and fusion share the single dense pass."""
+        """Retrieval relevance per POI, calibrated to [0,1] by a FIXED per-shape max (OV6:
+        not per-query min-max): the best fused score is one rank-1 reciprocal vote per
+        NON-EMPTY list, i.e. k/(RRF_C+1) — so BM25-only (floor mode, or a degraded query
+        vector) calibrates against 1/(c+1) instead of silently capping at 0.5. A lifted
+        district reference is stripped from the BM25 query (quán/quận de-pollution) —
+        location is carried by the distance signal, not lexical token overlap. The dense
+        side keeps the full query (embeddings don't token-double-count); `dense_ids` is
+        precomputed once by the caller so corroboration and fusion share the single dense
+        pass."""
         drop = set(fold(intent.district).split()) if intent.district else None
         bm25_ids = [pid for pid, _ in self.bm25.search(query_text, drop=drop)]
-        fused = rrf_fuse([bm25_ids, dense_ids], c=RRF_C)
-        return {pid: min(1.0, score / RRF_MAX) for pid, score in fused}
+        lists = [bm25_ids, dense_ids] if self.dense is not None else [bm25_ids]
+        fused = rrf_fuse(lists, c=RRF_C)
+        rrf_max = max(1, sum(1 for l in lists if l)) / (RRF_C + 1)
+        return {pid: min(1.0, score / rrf_max) for pid, score in fused}
 
     def resolve_intent(self, query_text: str) -> QueryIntent:
         """The ONE intent resolution for a query — public because the API layer must use
@@ -132,8 +241,9 @@ class FullPipeline:
             with self._llm_warn_lock:
                 if not self._llm_warned:
                     logger.warning(
-                        "LLM parse (%s=bedrock) unavailable; serving rule-parsed results. "
-                        "Run scripts/check_bedrock.py to diagnose.", LLM_PARSE_ENV,
+                        "LLM parse (enabled via %s) unavailable; serving rule-parsed "
+                        "results. Run scripts/check_bedrock.py to diagnose.",
+                        self._llm_enabled_via,
                     )
                     self._llm_warned = True
             return rule_intent
@@ -146,7 +256,8 @@ class FullPipeline:
         fires at most once per query — see `search`); when omitted it is resolved here."""
         if intent is None:
             intent = self.resolve_intent(query_text)
-        dense_ids = [pid for pid, _ in self.dense.search(query_text)]  # one dense pass, reused below
+        # one dense pass, reused below; the BM25-only floor (dense=None) has no dense opinion
+        dense_ids = [pid for pid, _ in self.dense.search(query_text)] if self.dense else []
         rel = self._relevance(query_text, intent, dense_ids)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:

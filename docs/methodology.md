@@ -109,6 +109,16 @@ full re-rank **0.959** (NDCG@5) — each stage adds value.
 Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary provider: the build,
 tuning, and gates all run against it, so the demo has no hard network dependency (NFR-3).
 
+**Deployment modes** (`src/semsearch/config.py`, env `SEMSEARCH_MODE`) make this posture
+switchable per host: `local` (the default above — what every reported metric runs on),
+`local-first` (local, degrading to the Bedrock chain if bge-m3 is broken on the host), and
+`cloud` (Bedrock-only for remote hosting without the 2.3 GB model; all providers failing
+degrades to a BM25-only floor, and the LLM parse turns on by default). Every measurement
+entry point (`engines.py` factories, `tune.py`, `bench_latency.py`, `sample_queries.py`,
+`robustness.py`) pins BOTH `provider='local'` and `mode='local'`, so neither the embedding
+space nor the LLM-parse default can drift with the deployment mode — a regression test
+(`tests/test_integrity.py::test_eval_engines_immune_to_deployment_mode`) enforces this.
+
 **Amazon Bedrock is implemented as a selectable provider** — never the default, never
 required to run:
 

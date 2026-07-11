@@ -47,7 +47,9 @@ def main() -> None:
     split = load_split() if SPLIT_PATH.exists() else make_split(queries)
     tune = select(queries, split, "tune")
 
-    pipe = FullPipeline(pois)  # built once; we mutate ranker.weights between evals
+    # MEASUREMENT: pinned local (provider AND mode) — weights.json must never be tuned
+    # against a cloud vector space or an LLM-enriched parse (eval integrity, NFR-6).
+    pipe = FullPipeline(pois, provider="local", mode="local")  # built once; weights mutated between evals
 
     def score(weights: dict[str, float]) -> float:
         pipe.ranker.weights = weights

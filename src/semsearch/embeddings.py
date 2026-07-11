@@ -46,6 +46,67 @@ COHERE_MAX_BATCH = 96  # Cohere embed on Bedrock accepts up to 96 texts/call
 # (<= connect+read ≈ 12s) instead of hanging the demo. No retries — we degrade, not stall.
 _BEDROCK_TIMEOUT = {"connect_timeout": 2, "read_timeout": 10, "retries": {"max_attempts": 1}}
 
+# --------------------------------------------------------------------------- #
+# Bedrock region-fallback chain (FR-10). Shared by BOTH consumers — embeddings #
+# (here) and the Claude parse (llm_parse imports it) — and each resolves its    #
+# OWN region independently by walking this chain until ITS model answers.       #
+#                                                                              #
+# EMPIRICAL, measured live on the AABW event account 2026-07-11:                #
+#   ap-southeast-1 (Singapore, closest to the demo venue): cohere-v3 WORKS;      #
+#       titan-embed-v2 NOT OFFERED in-region; Claude BLOCKED (region-scoped      #
+#       Anthropic "use case details form" -> ResourceNotFoundException).        #
+#   ap-northeast-1 (Tokyo): ALL THREE work (Claude via the global. profile).     #
+#   us-west-2 (Oregon): ALL THREE work.                                          #
+# So embeddings pin Singapore while Claude pins Tokyo — resolved per capability. #
+DEFAULT_BEDROCK_REGIONS = ("ap-southeast-1", "ap-northeast-1", "us-west-2")
+SEMSEARCH_BEDROCK_REGION_ENV = "SEMSEARCH_BEDROCK_REGION"    # singular: pin exactly one region
+SEMSEARCH_BEDROCK_REGIONS_ENV = "SEMSEARCH_BEDROCK_REGIONS"  # plural (CSV): replace the whole chain
+
+
+def is_no_credentials_error(exc: Exception) -> bool:
+    """True when a Bedrock failure means 'no usable AWS credentials' (incl. broken/expired
+    SSO tokens) — an ACCOUNT-WIDE state, not a regional one, so callers may short-circuit
+    the remaining region/provider probes instead of burning one timeout per candidate.
+    check_bedrock.py classifies STS failures with the same family."""
+    try:
+        from botocore.exceptions import (
+            NoCredentialsError,
+            PartialCredentialsError,
+            SSOTokenLoadError,
+            TokenRetrievalError,
+            UnauthorizedSSOTokenError,
+        )
+    except ImportError:  # pragma: no cover - botocore absent -> nothing bedrock anyway
+        return False
+    return isinstance(exc, (NoCredentialsError, PartialCredentialsError, SSOTokenLoadError,
+                            TokenRetrievalError, UnauthorizedSSOTokenError))
+
+
+def resolve_bedrock_regions() -> tuple[str, ...]:
+    """The ordered region chain every Bedrock consumer walks until ITS model works.
+
+    Precedence, highest first:
+      1. SEMSEARCH_BEDROCK_REGION (singular) -> exactly one region (a chain of one; keeps the
+         existing pin-one-region escape hatch as the strongest override).
+      2. SEMSEARCH_BEDROCK_REGIONS (plural, comma-separated) -> replaces the whole chain.
+      3. AWS_REGION / AWS_DEFAULT_REGION -> exactly one region (preserves today's semantics).
+      4. DEFAULT_BEDROCK_REGIONS -> the venue-proximity default chain.
+
+    Always non-empty (a blank plural value falls through), so a consumer never resolves zero
+    regions."""
+    single = os.environ.get(SEMSEARCH_BEDROCK_REGION_ENV)
+    if single:
+        return (single,)
+    plural = os.environ.get(SEMSEARCH_BEDROCK_REGIONS_ENV)
+    if plural:
+        regions = tuple(r.strip() for r in plural.split(",") if r.strip())
+        if regions:
+            return regions
+    aws = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if aws:
+        return (aws,)
+    return DEFAULT_BEDROCK_REGIONS
+
 
 def compose_doc_text(p: POI) -> str:
     """Embedding document text (SPEC §4). Shared by ingest and the dense index."""
@@ -119,6 +180,10 @@ class BedrockEmbedder:
       * Lazy client: importing this module — and even *constructing* the embedder —
         pulls in no boto3 and triggers no credential lookup; the client is built on
         first embed. (resolve_provider's preflight is the only construction-time reach.)
+      * Region fallback: first embed walks the region chain (resolve_bedrock_regions),
+        probing one tiny embed per region; the FIRST region whose probe works is pinned
+        for this instance's whole run (one vector space, A2 — never re-walked mid-run).
+        All regions failing re-raises, so the caller degrades to local exactly as today.
       * We L2-normalize the returned vectors OURSELVES. Cohere embeddings are NOT
         normalized, and DenseIndex's cosine-as-matvec assumes unit norm — so we never
         trust the API defaults, keeping cohere/titan/bge-m3 interchangeable at the index.
@@ -133,26 +198,63 @@ class BedrockEmbedder:
         self.provider = provider
         self.model_id = MODEL_IDS[provider]
         self._client = None  # lazy (no boto3 import / cred lookup until first embed)
+        self._region: str | None = None  # pinned by _pin_region on first use (region walk)
 
     @staticmethod
-    def _region() -> str:
-        # SEMSEARCH_BEDROCK_REGION override wins; else AWS_REGION / AWS_DEFAULT_REGION;
-        # else the event region (ap-southeast-1, Singapore).
-        return (
-            os.environ.get("SEMSEARCH_BEDROCK_REGION")
-            or os.environ.get("AWS_REGION")
-            or os.environ.get("AWS_DEFAULT_REGION")
-            or "ap-southeast-1"
+    def _make_client(region: str):
+        import boto3  # deferred: no import cost unless a bedrock provider is selected
+        from botocore.config import Config
+
+        return boto3.client(
+            "bedrock-runtime", region_name=region, config=Config(**_BEDROCK_TIMEOUT)
         )
+
+    def _probe(self, client) -> None:
+        """One tiny invoke_model proving THIS embedding model works in THIS region. Raises on
+        any failure — region unreachable, model not offered in-region, no model access."""
+        if self.provider == "bedrock-cohere":
+            body = json.dumps({"texts": ["ping"], "input_type": "search_query", "truncate": "END"})
+        else:
+            body = json.dumps({"inputText": "ping", "dimensions": self.dim, "normalize": True})
+        client.invoke_model(modelId=self.model_id, body=body)
+
+    def _pin_region(self):
+        """Walk the region chain; pin the FIRST region whose preflight probe succeeds for this
+        instance's whole run. Every region failing re-raises the last error so the caller (a
+        preflight, or a per-query embed) degrades exactly as today.
+
+        Tradeoff: a NO-CREDENTIALS failure short-circuits the walk after the first region —
+        credentials are account-wide, not regional, so probing the remaining regions can only
+        burn 2 more connect-timeouts for the same answer. Network/model errors keep the full
+        per-region walk (an outage or a missing model CAN be regional)."""
+        regions = resolve_bedrock_regions()
+        last_exc: Exception | None = None
+        for region in regions:
+            try:
+                client = self._make_client(region)
+                self._probe(client)
+            except Exception as exc:  # noqa: BLE001 - region/model unavailable; try the next
+                last_exc = exc
+                if is_no_credentials_error(exc):
+                    logger.warning(
+                        "Bedrock %s: no AWS credentials (%s) — skipping the remaining "
+                        "regions (credentials are account-wide).",
+                        self.provider, type(exc).__name__,
+                    )
+                    break
+                logger.warning(
+                    "Bedrock %s: region %s unavailable (%s: %s); trying the next region.",
+                    self.provider, region, type(exc).__name__, exc,
+                )
+                continue
+            self._client, self._region = client, region
+            logger.info("Bedrock %s pinned to region %s.", self.provider, region)
+            return self._client
+        raise last_exc if last_exc is not None else RuntimeError("no bedrock regions configured")
 
     def _get_client(self):
         if self._client is None:
-            import boto3  # deferred: no import cost unless a bedrock provider is selected
-            from botocore.config import Config
-
-            self._client = boto3.client(
-                "bedrock-runtime", region_name=self._region(), config=Config(**_BEDROCK_TIMEOUT)
-            )
+            self._pin_region()
         return self._client
 
     def embed(self, texts: Sequence[str], *, input_type: str = "search_document") -> np.ndarray:

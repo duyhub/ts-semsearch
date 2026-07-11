@@ -111,6 +111,27 @@ uv run uvicorn semsearch.api:create_app --factory --port 8000
 #         GET /health   ·   GET /docs (OpenAPI)
 ```
 
+### Deployment modes
+
+The engine has one switch for how it sources models — `DEFAULT_MODE` in
+`src/semsearch/config.py`, or env `SEMSEARCH_MODE` (env wins):
+
+| Mode | Embeddings | LLM query parse |
+|---|---|---|
+| `local` (default) | local bge-m3 only; cloud never contacted | off (deterministic) |
+| `local-first` | local, degrading to Bedrock (cohere→titan, region chain) if bge-m3 is broken | off |
+| `cloud` | Bedrock only — local never loaded (no 2.3 GB model needed); all-fail → BM25-only floor | **on** by default (Claude, else OpenAI) |
+
+`SEMSEARCH_LLM_PARSE` always wins over the mode default: `off` forces it off, `on`/`bedrock`
+force it on (full Bedrock→OpenAI chain), `openai` forces it on pinning OpenAI directly
+(skips all Bedrock probes); unknown values warn and stay off.
+
+Remote hosting without the local model: `SEMSEARCH_MODE=cloud` plus AWS credentials
+(embeddings + Claude) and/or an OpenAI key (`OPENAI_API_KEY` or the gitignored
+`.env/OPENAI-API-key.txt`) for the LLM parse. `GET /health` reports what actually
+resolved (`mode`, `embeddings`, `llm_parse`); `uv run python scripts/check_bedrock.py`
+previews all three modes against live credentials.
+
 ## Verify
 
 ```bash

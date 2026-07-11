@@ -18,9 +18,14 @@ client = TestClient(app)
 
 
 def test_health():
+    # /health is NOT part of the Tasco /v1/search contract (tasco_api.pdf covers the search
+    # endpoints only) — it is our ops surface, extended for deployment-mode visibility.
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json()["status"] == "ok"
+    body = r.json()
+    assert body["status"] == "ok"
+    assert {"pois", "mode", "embeddings", "llm_parse"} <= set(body)
+    assert body["mode"] == "local" and body["embeddings"] == "local"  # default posture
 
 
 def test_search_shape_and_poi_prefix():

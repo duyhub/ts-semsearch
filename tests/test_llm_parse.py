@@ -29,6 +29,7 @@ import json
 import os
 import sys
 import types
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -73,9 +74,41 @@ class FakeConverseClient:
 
 
 def make_parser(client: FakeConverseClient, model_id: str | None = None) -> L.LLMParser:
+    # LLMParser resolves its provider EAGERLY at construction; the autouse `_offline_llm`
+    # fixture makes that resolution find nothing (no network, no key), then we inject the
+    # fake so parse() runs against it (provider unset -> the bedrock/converse path).
     p = L.LLMParser(model_id=model_id)
-    p._client = client  # inject the fake so _get_client never builds a boto3 client
+    p._client = client  # inject the fake; a set _client marks the parser available
     return p
+
+
+class _AlwaysFailConverse:
+    """A stand-in bedrock-runtime client whose every call fails — models the offline /
+    no-credentials default so an eager LLMParser resolution pins nothing."""
+
+    def converse(self, **_kw):
+        raise RuntimeError("offline: no bedrock reachable in tests")
+
+    def invoke_model(self, **_kw):
+        raise RuntimeError("offline: no bedrock reachable in tests")
+
+
+def _no_openai_client():
+    raise AssertionError("OpenAI must not be contacted in this test")
+
+
+@pytest.fixture(autouse=True)
+def _offline_llm(monkeypatch, tmp_path):
+    """Default for EVERY test in this module: constructing an LLMParser resolves NOTHING with
+    NO network — Bedrock fails offline, no OpenAI key is discoverable (env cleared; the repo
+    root is pointed at an empty tmp dir so the developer's real gitignored `.env/` key file is
+    invisible to tests), and any accidental OpenAI client construction fails loudly. Tests that
+    exercise Bedrock/OpenAI resolution override these pieces explicitly."""
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv(L.OPENAI_MODEL_ENV, raising=False)
+    monkeypatch.setattr(L, "_REPO_ROOT", tmp_path / "no-repo")
+    monkeypatch.setattr(L.LLMParser, "_make_openai_client", staticmethod(_no_openai_client))
 
 
 def _llm_json(**overrides) -> str:
@@ -161,35 +194,391 @@ def test_converse_request_shape():
 
 
 # --------------------------------------------------------------------------- #
-# Model-id fallback: APAC profile rejected -> retry the global id             #
+# Eager (region x model-id) resolution at construction                        #
 # --------------------------------------------------------------------------- #
-def test_falls_back_through_model_id_chain_on_validation_error(monkeypatch):
-    # apac profile invalid -> global profile invalid -> plain id succeeds. Verified live on
-    # the AABW account: which profile exists varies per account, so the chain must walk.
-    monkeypatch.delenv(L.CLAUDE_MODEL_ENV, raising=False)
+_REGION_ENVS = (
+    "SEMSEARCH_BEDROCK_REGION", "SEMSEARCH_BEDROCK_REGIONS", "AWS_REGION", "AWS_DEFAULT_REGION",
+)
+
+
+def _use_case_block() -> Exception:
+    """The region-scoped Anthropic 'use case details form' block seen live in ap-southeast-1."""
     from botocore.exceptions import ClientError
 
-    err = ClientError(
+    return ClientError(
+        {"Error": {"Code": "ResourceNotFoundException",
+                   "Message": "Could not resolve the model; complete the Anthropic use case form."}},
+        "Converse",
+    )
+
+
+def _invalid_model() -> Exception:
+    from botocore.exceptions import ClientError
+
+    return ClientError(
         {"Error": {"Code": "ValidationException",
                    "Message": "The provided model identifier is invalid."}},
         "Converse",
     )
-    chain = [L.DEFAULT_CLAUDE_MODEL, *L.FALLBACK_CLAUDE_MODELS]
-    client = FakeConverseClient(per_model={
-        chain[0]: err,
-        chain[1]: err,
-        chain[2]: _llm_json(category="ATM"),
-    })
-    out = make_parser(client).parse("q")
-    assert out["category"] == "ATM"
-    assert [c["modelId"] for c in client.calls] == chain
 
 
-def test_non_model_error_does_not_fall_through():
+def _region_boto_factory(monkeypatch, per_region):
+    """Monkeypatch boto3.client with a factory keyed on region_name (NO network).
+    `per_region(region) -> FakeConverseClient`. Returns the dict of clients built."""
+    built: dict = {}
+
+    def factory(service, *, region_name=None, config=None):
+        assert service == "bedrock-runtime"
+        client = per_region(region_name)
+        built[region_name] = client
+        return client
+
+    monkeypatch.setattr("boto3.client", factory)
+    return built
+
+
+def test_llm_parser_resolves_region_model_matrix(monkeypatch):
+    """Walk regions OUTER, model-id chain INNER. Region A (ap-southeast-1) blocks Claude
+    entirely (every id -> the use-case ResourceNotFoundException); region B (ap-northeast-1)
+    serves it via the global. profile (apac id invalid, global id answers). The parser must
+    pin B + the global id, with the converse-ping counts exactly as walked."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv(L.CLAUDE_MODEL_ENV, raising=False)
+    chain = [L.DEFAULT_CLAUDE_MODEL, *L.FALLBACK_CLAUDE_MODELS]  # apac, global, plain
+
+    def per_region(region):
+        if region == "ap-southeast-1":
+            return FakeConverseClient(per_model={mid: _use_case_block() for mid in chain})
+        # ap-northeast-1: apac id invalid, global id answers (plain never reached)
+        return FakeConverseClient(per_model={chain[0]: _invalid_model(), chain[1]: "ok"})
+
+    built = _region_boto_factory(monkeypatch, per_region)
+    parser = L.LLMParser()
+
+    assert parser._region == "ap-northeast-1"          # region A blocked -> pinned region B
+    assert parser.model_id == chain[1]                  # the global. profile id
+    assert parser._client is built["ap-northeast-1"]
+    assert "us-west-2" not in built                     # stopped at the first working combo
+    # ping counts: region A tried all 3 ids; region B tried apac (fail) + global (success)
+    assert [c["modelId"] for c in built["ap-southeast-1"].calls] == chain
+    assert [c["modelId"] for c in built["ap-northeast-1"].calls] == chain[:2]
+
+
+def test_llm_parser_resolves_nothing_is_unavailable(monkeypatch):
+    """No (region, model) answers -> the parser is unavailable and parse() returns None,
+    exactly like today's parse-failure path (pipeline then serves the rule intent)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    _region_boto_factory(
+        monkeypatch, lambda region: FakeConverseClient(raise_exc=RuntimeError(f"{region} blocked"))
+    )
+    parser = L.LLMParser()
+    assert parser._client is None and parser._region is None
+    assert parser.parse("cà phê yên tĩnh") is None
+
+
+def test_pinned_parser_does_not_rewalk_after_a_call_fails(monkeypatch):
+    """Determinism/latency: once pinned, a per-call failure degrades to None; it MUST NOT
+    construct new clients (no mid-demo region re-walk)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv(L.CLAUDE_MODEL_ENV, raising=False)
+    built = _region_boto_factory(monkeypatch, lambda region: FakeConverseClient("ok"))
+    parser = L.LLMParser()
+    assert parser._region == "ap-southeast-1"  # closest region answers, pinned first
+    n_clients = len(built)
+
+    # the pinned call now starts failing (transient 5xx / creds expired mid-demo)
+    parser._client = FakeConverseClient(raise_exc=RuntimeError("5xx mid-demo"))
+    assert parser.parse("q") is None            # degrades to None
+    assert len(built) == n_clients              # no new boto3.client constructed -> no re-walk
+
+
+def test_non_model_error_returns_none_single_call():
     client = FakeConverseClient(raise_exc=RuntimeError("throttled"))
     out = make_parser(client).parse("q")
     assert out is None
-    assert len(client.calls) == 1  # a non-model error is NOT retried on the global id
+    assert len(client.calls) == 1  # pinned model is called once; failure degrades, no re-walk
+
+
+# --------------------------------------------------------------------------- #
+# OpenAI fallback: Bedrock (all blocked) -> OpenAI (key discoverable) -> rules #
+#                                                                             #
+# HARD RULE under test throughout: the API key must NEVER appear in logs,     #
+# exception messages, traces, or test output — assertions use FAKE keys and   #
+# verify every captured log record is key-free.                               #
+# --------------------------------------------------------------------------- #
+FAKE_KEY = "sk-proj-FAKE-KEY-1234567890abcdefFAKE"
+
+
+def _assert_no_key_in_logs(caplog):
+    for rec in caplog.records:
+        assert FAKE_KEY not in rec.getMessage(), "API key leaked into a log record"
+
+
+def _chat_completion(content: str) -> dict:
+    return {"choices": [{"message": {"content": content}}]}
+
+
+def _mock_openai(monkeypatch, handler):
+    """Replace the OpenAI client factory with an httpx MockTransport (NO network).
+    Returns the list of recorded httpx.Request objects."""
+    import httpx
+
+    calls: list = []
+
+    def recording(request):
+        calls.append(request)
+        return handler(request)
+
+    monkeypatch.setattr(
+        L.LLMParser, "_make_openai_client",
+        staticmethod(lambda: httpx.Client(transport=httpx.MockTransport(recording))),
+    )
+    return calls
+
+
+def _openai_ok_handler(content: str = "{}"):
+    import httpx
+
+    def handler(request):
+        return httpx.Response(200, json=_chat_completion(content))
+
+    return handler
+
+
+# ---- key discovery ---------------------------------------------------------- #
+def test_openai_key_env_wins_over_file(monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    (root / ".env").mkdir(parents=True)
+    (root / ".env" / "OPENAI-API-key.txt").write_text("sk-file-key\n", encoding="utf-8")
+    monkeypatch.setattr(L, "_REPO_ROOT", root)
+    monkeypatch.setenv("OPENAI_API_KEY", "  sk-env-key\n")  # whitespace stripped for env too
+    assert L.discover_openai_key() == ("sk-env-key", "env")
+
+
+@pytest.mark.parametrize("name", ["OPENAI-API-key.txt", "openai-api-key.txt"])
+def test_openai_key_file_both_casings_whitespace_stripped(monkeypatch, tmp_path, name):
+    root = tmp_path / "repo"
+    (root / ".env").mkdir(parents=True)
+    (root / ".env" / name).write_text("  sk-file-key \n\n", encoding="utf-8")
+    monkeypatch.setattr(L, "_REPO_ROOT", root)
+    assert L.discover_openai_key() == ("sk-file-key", ".env file")
+
+
+def test_openai_key_absent_returns_none():
+    # autouse fixture: env cleared + repo root pointed at an empty tmp dir
+    assert L.discover_openai_key() is None
+
+
+# ---- resolution order ------------------------------------------------------- #
+def test_bedrock_success_means_openai_never_contacted(monkeypatch):
+    """Bedrock resolving first means OpenAI is NEVER contacted — the autouse factory raises
+    AssertionError on any OpenAI client construction, so pinning bedrock proves it."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)  # key present, must stay untouched
+    monkeypatch.setattr("boto3.client", lambda *a, **k: FakeConverseClient("pong"))
+    parser = L.LLMParser()
+    assert parser._provider == "bedrock"
+    assert parser._region == "ap-southeast-1"
+
+
+def test_bedrock_blocked_with_key_pins_openai(monkeypatch, caplog):
+    """All Bedrock candidates fail + a key exists -> ONE eager ping (max_tokens=1) pins
+    provider='openai' with the default model; the source is logged, the key never is."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    calls = _mock_openai(monkeypatch, _openai_ok_handler())
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    with caplog.at_level("INFO"):
+        parser = L.LLMParser()
+
+    assert parser._provider == "openai"
+    assert parser._client is not None
+    assert parser.model_id == "gpt-4.1-nano"       # SEMSEARCH_OPENAI_MODEL default
+    assert parser._region is None                   # no region concept for openai
+    assert len(calls) == 1                          # exactly ONE eager construction ping
+    ping = json.loads(calls[0].content)
+    assert ping["max_tokens"] == 1                  # the ping is tiny
+    assert calls[0].headers["authorization"] == f"Bearer {FAKE_KEY}"
+    assert any("OpenAI key found (env)" in r.getMessage() for r in caplog.records)
+    _assert_no_key_in_logs(caplog)
+
+
+def test_openai_model_env_override(monkeypatch):
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    _mock_openai(monkeypatch, _openai_ok_handler())
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv(L.OPENAI_MODEL_ENV, "gpt-4.1-mini")
+    parser = L.LLMParser()
+    assert parser._provider == "openai" and parser.model_id == "gpt-4.1-mini"
+
+
+def test_gpt5_override_payload_branching(monkeypatch):
+    """A gpt-5* env override must not 400: that family rejects non-default `temperature`
+    (omit it) and the legacy `max_tokens` (use `max_completion_tokens`). response_format
+    json_object still applies on the parse call."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    import httpx
+
+    def handler(request):
+        body = json.loads(request.content)
+        assert "temperature" not in body            # gpt-5* rejects non-default temperature
+        assert "max_tokens" not in body             # legacy param rejected by the family
+        assert "max_completion_tokens" in body
+        content = "ok" if body["max_completion_tokens"] == 1 else VALID_JSON
+        return httpx.Response(200, json=_chat_completion(content))
+
+    calls = _mock_openai(monkeypatch, handler)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv(L.OPENAI_MODEL_ENV, "gpt-5-nano")
+    parser = L.LLMParser()
+    assert parser._provider == "openai" and parser.model_id == "gpt-5-nano"
+    out = parser.parse("cà phê wifi")
+    assert out is not None and out["attributes"] == ["wifi", "yên tĩnh"]
+    req = json.loads(calls[-1].content)
+    assert req["max_completion_tokens"] == 300
+    assert req["response_format"] == {"type": "json_object"}
+
+
+def test_no_key_stays_unavailable_rule_intent_path():
+    """Bedrock blocked + no key discoverable -> unavailable, exactly today's behavior."""
+    parser = L.LLMParser()  # autouse defaults: bedrock fails, no key
+    assert parser._client is None and parser._provider is None
+    assert parser.parse("cà phê yên tĩnh") is None  # pipeline then serves the rule intent
+
+
+# ---- OpenAI call path: request shape + provider-agnostic validation ---------- #
+def test_openai_parse_request_shape_and_validation_identical(monkeypatch):
+    """The OpenAI path reuses SYSTEM_PROMPT + _validate: out-of-vocab attrs and location keys
+    coming back via OpenAI are dropped exactly as on the Bedrock path."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    import httpx
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("max_tokens") == 1:  # the construction ping
+            return httpx.Response(200, json=_chat_completion("ok"))
+        return httpx.Response(200, json=_chat_completion(VALID_JSON))
+
+    calls = _mock_openai(monkeypatch, handler)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    parser = L.LLMParser()
+    out = parser.parse("cà phê wifi")
+
+    # validation is the SAME safety boundary as bedrock: teleport + location dropped
+    assert out is not None
+    assert out["category"] == "Nhà hàng"
+    assert out["attributes"] == ["wifi", "yên tĩnh"]
+    assert "city" not in out and "district" not in out
+
+    req = json.loads(calls[-1].content)
+    assert req["model"] == "gpt-4.1-nano"
+    assert req["temperature"] == 0.0
+    assert req["max_tokens"] == 300
+    assert req["response_format"] == {"type": "json_object"}
+    assert req["messages"][0]["role"] == "system"
+    assert "ALLOWED CATEGORIES" in req["messages"][0]["content"]  # SYSTEM_PROMPT reused
+    assert req["messages"][1] == {"role": "user", "content": "cà phê wifi"}
+
+
+# ---- failure modes: 401 / timeout; no key in logs; no re-resolution ---------- #
+def test_openai_401_after_pin_degrades_no_key_in_logs(monkeypatch, caplog):
+    """After pinning, a per-call 401 (body deliberately embeds the fake key, mimicking
+    OpenAI's 'Incorrect API key provided' body) degrades to None — and NO log record may
+    contain the key. No re-resolution happens (transport call count stays ping+1)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    import httpx
+
+    state = {"pinged": False}
+
+    def handler(request):
+        if not state["pinged"]:
+            state["pinged"] = True
+            return httpx.Response(200, json=_chat_completion("ok"))
+        return httpx.Response(
+            401, json={"error": {"message": f"Incorrect API key provided: {FAKE_KEY}"}}
+        )
+
+    calls = _mock_openai(monkeypatch, handler)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    with caplog.at_level("DEBUG"):
+        parser = L.LLMParser()
+        assert parser._provider == "openai"
+        assert parser.parse("q") is None            # 401 degrades to the rule-intent path
+        assert parser._provider == "openai"          # still pinned: no mid-demo re-resolution
+    assert len(calls) == 2                           # ping + ONE failed call, nothing more
+    _assert_no_key_in_logs(caplog)
+
+
+def test_openai_ping_timeout_leaves_parser_unavailable(monkeypatch, caplog):
+    """Key exists but the eager ping times out -> unavailable (rule fallback), key-free logs."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    import httpx
+
+    def handler(request):
+        raise httpx.ConnectTimeout("connection timed out")
+
+    _mock_openai(monkeypatch, handler)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    with caplog.at_level("DEBUG"):
+        parser = L.LLMParser()
+    assert parser._client is None and parser._provider is None
+    assert parser.parse("q") is None
+    _assert_no_key_in_logs(caplog)
+
+
+def test_openai_unavailable_serves_rule_intent_via_pipeline(monkeypatch, pois):
+    """End-to-end wiring: gate ON, bedrock blocked, ping 401 -> resolve_intent falls back to
+    the rule intent with the existing warn-once path."""
+    import httpx
+
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    _mock_openai(monkeypatch, lambda request: httpx.Response(
+        401, json={"error": {"message": f"Incorrect API key provided: {FAKE_KEY}"}}))
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    monkeypatch.setenv("SEMSEARCH_LLM_PARSE", "bedrock")
+    pipe = FullPipeline(pois)
+    assert pipe._llm_parser is not None and pipe._llm_parser._client is None
+    q = "quán cà phê yên tĩnh"
+    assert pipe.resolve_intent(q) == pipe.parser.parse(q)
+
+
+# ---- tracing carries provider + model, never the key ------------------------- #
+def test_openai_parse_traces_provider_and_model_never_key(fake_langfuse, monkeypatch):
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    import httpx
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body.get("max_tokens") == 1:
+            return httpx.Response(200, json=_chat_completion("ok"))
+        return httpx.Response(200, json=_chat_completion(VALID_JSON))
+
+    _mock_openai(monkeypatch, handler)
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    parser = L.LLMParser()
+    out = parser.parse("cà phê wifi")
+    assert out is not None
+
+    kw, span = fake_langfuse.last.observations[0]
+    assert kw["name"] == "llm_parse"
+    assert kw["model"] == "gpt-4.1-nano"             # pinned model name in the trace
+    metas = [u["metadata"] for u in span.updates if "metadata" in u]
+    assert any(m.get("provider") == "openai" for m in metas)  # pinned provider in metadata
+    # the key appears NOWHERE in the emitted observation or updates
+    emitted = json.dumps({"kw": {k: str(v) for k, v in kw.items()},
+                          "updates": [str(u) for u in span.updates]})
+    assert FAKE_KEY not in emitted
 
 
 # --------------------------------------------------------------------------- #
@@ -401,12 +790,19 @@ def pois():
 
 @pytest.fixture(scope="module")
 def gate_pipe(pois):
-    """A FullPipeline constructed with the LLM gate ON. The real converse client is never
-    built — tests inject a FakeConverseClient onto pipe._llm_parser._client."""
+    """A FullPipeline constructed with the LLM gate ON. Construction now resolves the parser
+    EAGERLY, so we patch boto3.client to fail during construction (offline, no network): the
+    parser ends up unavailable, and each test injects a FakeConverseClient onto
+    pipe._llm_parser._client."""
     prev = os.environ.get("SEMSEARCH_LLM_PARSE")
     os.environ["SEMSEARCH_LLM_PARSE"] = "bedrock"
     try:
-        pipe = FullPipeline(pois)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
+            mp.delenv("OPENAI_API_KEY", raising=False)
+            mp.setattr(L, "_REPO_ROOT", Path("/nonexistent-semsearch-tests"))  # hide real .env/
+            mp.setattr(L.LLMParser, "_make_openai_client", staticmethod(_no_openai_client))
+            pipe = FullPipeline(pois)
     finally:
         if prev is None:
             os.environ.pop("SEMSEARCH_LLM_PARSE", None)
@@ -429,9 +825,21 @@ def test_gate_off_never_constructs_llmparser(monkeypatch, pois):
     assert pipe.resolve_intent(q) == pipe.parser.parse(q)
 
 
-def test_gate_on_constructs_lazy_parser(gate_pipe):
+def test_gate_on_constructs_parser_resolves_at_construction(gate_pipe):
     assert gate_pipe._llm_parser is not None
-    assert gate_pipe._llm_parser._client is None  # lazy: no boto3 client until first parse
+    # Eager resolution ran at construction but found nothing reachable (offline), so no
+    # boto3 client persists — behaves as today's parse-failure path.
+    assert gate_pipe._llm_parser._client is None
+    assert gate_pipe._llm_parser._region is None
+
+
+def test_gate_on_unavailable_serves_rule_intent(gate_pipe):
+    """A construction that resolves nothing must behave exactly like the parse-failure path:
+    resolve_intent is byte-identical to the plain rule parse. (Runs before any test injects a
+    client onto the shared gate pipeline.)"""
+    q = "quán cà phê yên tĩnh"
+    assert gate_pipe._llm_parser._client is None  # unavailable at this point in the module
+    assert gate_pipe.resolve_intent(q) == gate_pipe.parser.parse(q)
 
 
 def test_resolve_intent_falls_back_to_rules_on_failure(gate_pipe):
@@ -502,7 +910,12 @@ def gate_app(pois):
     prev = os.environ.get("SEMSEARCH_LLM_PARSE")
     os.environ["SEMSEARCH_LLM_PARSE"] = "bedrock"
     try:
-        app = create_app(pois, prewarm=False)
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("boto3.client", lambda *a, **k: _AlwaysFailConverse())
+            mp.delenv("OPENAI_API_KEY", raising=False)
+            mp.setattr(L, "_REPO_ROOT", Path("/nonexistent-semsearch-tests"))  # hide real .env/
+            mp.setattr(L.LLMParser, "_make_openai_client", staticmethod(_no_openai_client))
+            app = create_app(pois, prewarm=False)
     finally:
         if prev is None:
             os.environ.pop("SEMSEARCH_LLM_PARSE", None)
@@ -548,3 +961,20 @@ def test_api_gate_off_unchanged(pois, monkeypatch):
     assert body["intent"]["requiredAttrs"] == rule.required_attrs
     expected_ids = [f"poi:{pid}" for pid, _, _ in pipe.rank_scored("cà phê", intent=rule)[:10]]
     assert [res["id"] for res in body["results"]] == expected_ids
+
+
+def test_prefer_openai_skips_bedrock_entirely(monkeypatch):
+    """LLMParser(prefer='openai') must pin OpenAI without a single Bedrock probe, even when
+    Bedrock WOULD succeed (SEMSEARCH_LLM_PARSE=openai: operator has a key, no Bedrock)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+
+    def _no_boto(*a, **k):
+        raise AssertionError("bedrock must not be probed with prefer='openai'")
+
+    monkeypatch.setattr("boto3.client", _no_boto)
+    calls = _mock_openai(monkeypatch, _openai_ok_handler())
+    monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
+    parser = L.LLMParser(prefer="openai")
+    assert parser._provider == "openai" and parser._client is not None
+    assert len(calls) == 1  # the single eager ping; no bedrock walk happened

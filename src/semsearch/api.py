@@ -140,15 +140,38 @@ def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
     return tuple(parts)  # type: ignore[return-value]
 
 
+def _embeddings_status(pipeline) -> str:
+    """/health string for what the embeddings actually resolved to: 'local',
+    '<provider>@<region>' for a pinned cloud provider, or 'bm25-only' on the floor."""
+    if pipeline.dense is None:
+        return "bm25-only"
+    emb = pipeline.dense.emb
+    if emb.provider == "local":
+        return "local"
+    # a cached doc matrix defers the region pin to the first live query embed
+    return f"{emb.provider}@{getattr(emb, '_region', None) or 'unpinned'}"
+
+
+def _llm_status(pipeline) -> str:
+    """/health string for the LLM parse: '<provider>+<model>' when a provider pinned at
+    construction, else 'rules-only' (gate off, or nothing resolved)."""
+    parser = pipeline._llm_parser
+    if parser is None or parser._client is None:
+        return "rules-only"
+    return f"{parser._provider or 'bedrock'}+{parser.model_id}"
+
+
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
-               prewarm: bool = True) -> FastAPI:
+               prewarm: bool = True, mode: Optional[str] = None) -> FastAPI:
     app = FastAPI(title="Tasco Semantic Search & Ranking", version="0.1.0")
     if UI_DIR.exists():  # serve vendored assets (Leaflet js/css) offline-safe at /ui/*
         app.mount("/ui", StaticFiles(directory=str(UI_DIR)), name="ui")
     # Serve the TUNED weights (weights.json), so the live API matches the reported
-    # metrics instead of falling back to untuned DEFAULT_WEIGHTS.
+    # metrics instead of falling back to untuned DEFAULT_WEIGHTS. `mode` defaults to the
+    # env-resolved deployment mode (SEMSEARCH_MODE / config.DEFAULT_MODE) inside the
+    # pipeline — no signature break for existing callers/tests.
     pipeline = FullPipeline(pois if pois is not None else load_pois(),
-                            weights=load_weights(), now=now)
+                            weights=load_weights(), now=now, mode=mode)
     app.state.pipeline = pipeline
     if prewarm:  # P1: warm the embedding model at boot so the first live query is snappy.
         # Neutral warmup string (NOT an eval query — keeps eval text out of src, NFR-6).
@@ -248,7 +271,15 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "pois": len(pipeline.pois)}
+        # Ops visibility for remote hosting (NOT part of the Tasco /v1/search contract):
+        # the deployment mode plus what embeddings/LLM-parse ACTUALLY resolved to.
+        return {
+            "status": "ok",
+            "pois": len(pipeline.pois),
+            "mode": pipeline.mode,
+            "embeddings": _embeddings_status(pipeline),
+            "llm_parse": _llm_status(pipeline),
+        }
 
     @app.get("/v1/search", response_model=SearchResponse)
     @app.get("/search", response_model=SearchResponse)

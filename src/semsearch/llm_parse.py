@@ -1,10 +1,19 @@
-"""LLM query-intent parser on Bedrock Claude (PRD FR-4), layered over the rule parser.
+"""LLM query-intent parser (PRD FR-4), layered over the rule parser.
 
 The rule parser (`parse.py`) runs unconditionally and owns precise, tested extraction.
-This module OPTIONALLY enriches that parse with a Claude `converse` call that fills the
-gaps the keyword rules missed — a category phrased unusually, an attribute the taxonomy
-map didn't catch. It is OFF by default (NFR-5: `/v1/search` stays deterministic) and is
+This module OPTIONALLY enriches that parse with an LLM call that fills the gaps the
+keyword rules missed — a category phrased unusually, an attribute the taxonomy map
+didn't catch. It is OFF by default (NFR-5: `/v1/search` stays deterministic) and is
 gated in the pipeline by `SEMSEARCH_LLM_PARSE=bedrock`.
+
+Provider resolution (eager, at construction): Bedrock Claude (region chain x model-id
+chain) -> OpenAI chat completions (only when every Bedrock candidate fails AND an API
+key is discoverable) -> unavailable (rule parse only, pipeline warn-once). The
+validation safety boundary below is PROVIDER-AGNOSTIC and applies identically to both.
+
+HARD RULE: the OpenAI API key must NEVER appear in logs, exception messages, traces, or
+test output — we log only the key's SOURCE ("env" / ".env file") and redact the key from
+any error text we emit.
 
 The safety boundary is OWNERSHIP + VALIDATION, not the model. The LLM contributes ONLY
 category / attributes / price_pref / open_after — fields that feed soft ranking signals
@@ -29,18 +38,20 @@ import logging
 import os
 import re
 from dataclasses import replace
+from pathlib import Path
 
 from . import tracing
 from .data import QueryIntent
+from .embeddings import resolve_bedrock_regions  # shared region-fallback chain (FR-10)
 from .parse import ATTRIBUTE_KEYWORDS, CATEGORY_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
-# Model id: env override, else a fallback chain of ids for the same model. Accounts differ
-# in which inference profiles exist (verified live on the AABW account: no apac. profile for
-# Haiku 4.5, but the global. profile works, and the plain id is rejected with "on-demand
-# throughput isn't supported"), so `_converse` walks the chain on ValidationExceptions that
-# mention the model id.
+# Model id: env override, else a fallback chain of ids for the same model. Accounts AND regions
+# differ in which inference profiles exist (verified live on the AABW account: ap-southeast-1
+# blocks Claude entirely; ap-northeast-1 serves it via the global. profile, with the apac.
+# profile invalid and the plain id rejected for on-demand throughput). Construction resolves
+# the working (region x id) combination once — regions outer, this id chain inner.
 CLAUDE_MODEL_ENV = "SEMSEARCH_BEDROCK_CLAUDE"
 DEFAULT_CLAUDE_MODEL = "apac.anthropic.claude-haiku-4-5-20251001-v1:0"
 FALLBACK_CLAUDE_MODELS = (
@@ -52,6 +63,68 @@ FALLBACK_CLAUDE_MODELS = (
 # hangs the demo. Parse sits in the request path, so the read timeout is short (~3s) and
 # there are NO retries — on failure we degrade to the rule intent, we do not stall.
 _CLAUDE_TIMEOUT = {"connect_timeout": 2, "read_timeout": 3, "retries": {"max_attempts": 1}}
+_PING_MAX_TOKENS = 8  # a resolution ping just proves the (region, model) answers; keep it tiny
+
+# ---- OpenAI fallback (used ONLY when every Bedrock candidate fails) ---------------------- #
+# Claude access is blocked account-wide right now (the Anthropic use-case form), so an OpenAI
+# chat-completions fallback keeps the FR-4 enrichment alive. Same timeout discipline as the
+# Claude path (~2s connect / 3s read, no retries); httpx is already an installed dependency.
+OPENAI_KEY_ENV = "OPENAI_API_KEY"
+OPENAI_MODEL_ENV = "SEMSEARCH_OPENAI_MODEL"
+# Cheapest model that RELIABLY fits the 3s parse read-timeout, measured live with our real
+# SYSTEM_PROMPT (2026-07-11): gpt-4.1-nano $0.10/$0.40 per M at 1.1-1.7s. gpt-5-nano is
+# nominally cheaper ($0.05/$0.40) but measured 2.1-3.1s — rides/exceeds the 3s budget, so it
+# is NOT the default; override via SEMSEARCH_OPENAI_MODEL if latency tolerance differs.
+DEFAULT_OPENAI_MODEL = "gpt-4.1-nano"
+OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
+# Both observed spellings of the gitignored repo-root key file (never commit `.env/`).
+OPENAI_KEY_FILENAMES = ("OPENAI-API-key.txt", "openai-api-key.txt")
+_REPO_ROOT = Path(__file__).resolve().parents[2]  # src/semsearch/llm_parse.py -> repo root
+_OPENAI_PING_MAX_TOKENS = 1  # the eager pin ping only proves key+model answer
+
+
+def discover_openai_key() -> tuple[str, str] | None:
+    """Find an OpenAI API key: env `OPENAI_API_KEY` first, else the gitignored repo-root
+    `.env/` key file (both filename casings), whitespace-stripped. Returns (key, source)
+    with source in {"env", ".env file"}, or None.
+
+    HARD RULE: callers must log only the SOURCE — the key itself must never reach logs,
+    exception messages, traces, or test output."""
+    key = (os.environ.get(OPENAI_KEY_ENV) or "").strip()
+    if key:
+        return key, "env"
+    for name in OPENAI_KEY_FILENAMES:
+        try:
+            key = (_REPO_ROOT / ".env" / name).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if key:
+            return key, ".env file"
+    return None
+
+
+def _openai_payload(model: str, messages: list[dict], max_tokens: int,
+                    *, json_mode: bool = False) -> dict:
+    """Build a chat-completions payload that works across OpenAI model families, so an env
+    override never 400s: the gpt-5* reasoning family rejects non-default `temperature` (omit
+    it) and the legacy `max_tokens` param (use `max_completion_tokens`); the non-reasoning
+    default family (gpt-4.1-nano) takes `max_tokens` + `temperature: 0` (verified live)."""
+    payload: dict = {"model": model, "messages": messages}
+    if model.startswith("gpt-5"):
+        payload["max_completion_tokens"] = max_tokens
+    else:
+        payload["max_tokens"] = max_tokens
+        payload["temperature"] = 0.0
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    return payload
+
+
+def _redact(text: str, key: str | None) -> str:
+    """Scrub the API key from any text we are about to log (HARD RULE: the key must never
+    appear in logs, exception messages, traces, or test output). Defense in depth — our own
+    call path never puts the key in error text, but upstream messages could."""
+    return text.replace(key, "[REDACTED]") if key else text
 
 # Closed vocabularies, derived from the SAME source of truth as the rule parser so the LLM
 # can never widen them. dict.fromkeys dedupes the keyword-map values while preserving order.
@@ -162,82 +235,179 @@ def _extract_text(resp: dict) -> str:
     return "".join(b.get("text", "") for b in blocks if isinstance(b, dict))
 
 
-def _is_invalid_model_id(exc: Exception) -> bool:
-    """True when a converse call was rejected because the model id is invalid (so we
-    should retry the global id). Matches botocore's ValidationException about the model."""
-    code = ""
-    resp = getattr(exc, "response", None)
-    if isinstance(resp, dict):
-        code = str(resp.get("Error", {}).get("Code", ""))
-    text = f"{code} {exc}".lower()
-    return "validation" in text and "model" in text
-
-
 class LLMParser:
-    """Claude intent parser via Bedrock `converse`. Lazy boto3 client (no client / no
-    credential lookup until the first `parse`), same region/timeout conventions as
-    BedrockEmbedder. `parse` never raises — it returns a validated intent dict or None."""
+    """LLM intent parser. At CONSTRUCTION it resolves a working provider EAGERLY — Bedrock
+    Claude first (region chain OUTER, model-id chain INNER, a cheap converse ping per
+    candidate), then OpenAI (one tiny chat ping, only when all Bedrock candidates failed and a
+    key is discoverable) — so the FIRST user query is a single pinned call (snappy) and the
+    demo never re-resolves mid-flight. If nothing resolves, the parser is unavailable and
+    `parse` returns None: the pipeline's warn-once + rule fallback then behaves exactly like
+    today's parse-failure path. `parse` never raises."""
 
-    def __init__(self, model_id: str | None = None) -> None:
-        self.model_id = model_id or os.environ.get(CLAUDE_MODEL_ENV) or DEFAULT_CLAUDE_MODEL
-        self._client = None  # lazy: no boto3 import / cred lookup until first parse
-
-    @staticmethod
-    def _region() -> str:
-        # Same precedence as BedrockEmbedder: explicit override, then AWS_*, then the event
-        # region (ap-southeast-1, Singapore).
-        return (
-            os.environ.get("SEMSEARCH_BEDROCK_REGION")
-            or os.environ.get("AWS_REGION")
-            or os.environ.get("AWS_DEFAULT_REGION")
-            or "ap-southeast-1"
-        )
-
-    def _get_client(self):
-        if self._client is None:
-            import boto3  # deferred: no import cost unless the LLM parser is actually used
-            from botocore.config import Config
-
-            self._client = boto3.client(
-                "bedrock-runtime", region_name=self._region(), config=Config(**_CLAUDE_TIMEOUT)
-            )
-        return self._client
+    def __init__(self, model_id: str | None = None, *, prefer: str = "auto") -> None:
+        """`prefer='auto'` walks Bedrock then OpenAI; `prefer='openai'` skips every Bedrock
+        candidate and pins OpenAI directly (SEMSEARCH_LLM_PARSE=openai — an operator with a
+        key but no Bedrock shouldn't wait through 9 doomed converse probes)."""
+        self._requested_model = model_id or os.environ.get(CLAUDE_MODEL_ENV) or DEFAULT_CLAUDE_MODEL
+        self.model_id = self._requested_model  # the PINNED model after resolution (default until then)
+        self._prefer = prefer  # 'auto' (Bedrock -> OpenAI) | 'openai' (skip Bedrock entirely)
+        self._provider: str | None = None  # 'bedrock' | 'openai' after pinning; None => unavailable
+        self._region: str | None = None  # pinned Bedrock region; always None for openai
+        self._client = None  # pinned boto3 / httpx client; None => unavailable (parse returns None)
+        self._openai_key: str | None = None  # NEVER logged/traced; used only in the auth header
+        self._resolve()
 
     def _model_ids(self) -> list[str]:
-        ids = [self.model_id]
+        ids = [self._requested_model]
         # Only the default chain gets fallbacks; a user-set model id is used verbatim
         # (no guessing a fallback).
-        if self.model_id == DEFAULT_CLAUDE_MODEL:
+        if self._requested_model == DEFAULT_CLAUDE_MODEL:
             ids.extend(FALLBACK_CLAUDE_MODELS)
         return ids
 
-    def _converse(self, query: str) -> str:
-        """Call Claude and return the raw assistant text. Tries the APAC profile, then the
-        global id on a ValidationException about the model id. Raises on real failure."""
-        client = self._get_client()
-        messages = [{"role": "user", "content": [{"text": query}]}]
-        system = [{"text": SYSTEM_PROMPT}]
-        inference = {"temperature": 0.0, "maxTokens": 300}
-        model_ids = self._model_ids()
-        last_exc: Exception | None = None
-        for mid in model_ids:
-            try:
-                resp = client.converse(
-                    modelId=mid, messages=messages, system=system, inferenceConfig=inference
-                )
-                return _extract_text(resp)
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                # Fall through to the next id ONLY when the profile id itself was rejected.
-                if mid is not model_ids[-1] and _is_invalid_model_id(exc):
+    @staticmethod
+    def _make_client(region: str):
+        import boto3  # deferred: no import cost unless the LLM parser is actually used
+        from botocore.config import Config
+
+        return boto3.client(
+            "bedrock-runtime", region_name=region, config=Config(**_CLAUDE_TIMEOUT)
+        )
+
+    def _ping(self, client, model_id: str) -> None:
+        """Tiny converse proving THIS Claude id answers in THIS region. Raises on failure."""
+        client.converse(
+            modelId=model_id,
+            messages=[{"role": "user", "content": [{"text": "ping"}]}],
+            system=[{"text": "ping"}],
+            inferenceConfig={"maxTokens": _PING_MAX_TOKENS},
+        )
+
+    def _resolve(self) -> None:
+        """Pin the first working provider. Bedrock first (unless prefer='openai'): (region,
+        model-id) with regions OUTER, the id chain INNER — any candidate that raises
+        (region-scoped use-case block, invalid profile, throttle, timeout) is skipped.
+        Bedrock succeeding means OpenAI is NEVER contacted. All Bedrock candidates failing
+        AND a key being discoverable -> ONE eager OpenAI ping pins provider='openai'.
+        Nothing answering leaves the parser unavailable, which `parse` treats as today's
+        parse-failure path."""
+        if self._prefer != "openai":
+            regions = resolve_bedrock_regions()
+            model_ids = self._model_ids()
+            for region in regions:
+                try:
+                    client = self._make_client(region)
+                except Exception:  # noqa: BLE001 - client construction itself failed; next region
                     continue
-                raise
-        raise last_exc  # pragma: no cover - loop always returns or raises above
+                for mid in model_ids:
+                    try:
+                        self._ping(client, mid)
+                    except Exception:  # noqa: BLE001 - (region, model) unavailable; try next
+                        continue
+                    self._client, self._region, self.model_id = client, region, mid
+                    self._provider = "bedrock"
+                    logger.info("LLM parser pinned to region %s via model %s.", region, mid)
+                    return
+        if self._resolve_openai():
+            return
+        logger.warning(
+            "LLM parser: no working provider (%s); parse will degrade to the rule intent. "
+            "Run scripts/check_bedrock.py to diagnose.",
+            "OpenAI only, no key/ping" if self._prefer == "openai"
+            else "Bedrock across all regions, then OpenAI",
+        )
+
+    def _resolve_openai(self) -> bool:
+        """Try the OpenAI fallback: discover a key, ONE eager ping to pin it. Returns True when
+        pinned. HARD RULE: only the key's SOURCE is ever logged, and error text is redacted."""
+        found = discover_openai_key()
+        if found is None:
+            return False
+        key, source = found
+        model = os.environ.get(OPENAI_MODEL_ENV) or DEFAULT_OPENAI_MODEL
+        logger.info("OpenAI key found (%s); trying the OpenAI fallback for the LLM parse.", source)
+        client = self._make_openai_client()
+        try:
+            self._openai_post(
+                client, key,
+                _openai_payload(model, [{"role": "user", "content": "ping"}],
+                                _OPENAI_PING_MAX_TOKENS),
+            )
+        except Exception as exc:  # noqa: BLE001 - ping failed -> unavailable (rule fallback)
+            logger.warning(
+                "OpenAI fallback ping failed (%s); LLM parse unavailable.",
+                _redact(f"{type(exc).__name__}: {exc}", key),
+            )
+            try:
+                client.close()
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                pass
+            return False
+        self._client, self._provider = client, "openai"
+        self._openai_key, self.model_id = key, model
+        self._region = None
+        logger.info("LLM parser pinned to OpenAI (%s).", model)
+        return True
+
+    @staticmethod
+    def _make_openai_client():
+        # httpx is ALREADY an installed dependency (no new dep). Same timeout discipline as
+        # the Claude path: ~2s connect / 3s read, and NO retries (httpx does not retry).
+        import httpx  # deferred: no import cost unless the OpenAI fallback is reached
+
+        return httpx.Client(timeout=httpx.Timeout(3.0, connect=2.0))
+
+    @staticmethod
+    def _openai_post(client, key: str, payload: dict) -> dict:
+        """POST one chat completion. The key travels ONLY in the auth header — httpx exceptions
+        carry the URL, never request headers, so it cannot leak via raised errors."""
+        resp = client.post(
+            OPENAI_CHAT_URL, headers={"Authorization": f"Bearer {key}"}, json=payload
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def _openai_chat(self, query: str) -> str:
+        """Call the PINNED OpenAI model ONCE and return the raw assistant text. Reuses the same
+        SYSTEM_PROMPT; `_validate` downstream applies the identical closed-vocab boundary."""
+        data = self._openai_post(
+            self._client, self._openai_key,
+            _openai_payload(
+                self.model_id,
+                [{"role": "system", "content": SYSTEM_PROMPT},
+                 {"role": "user", "content": query}],
+                300,
+                json_mode=True,
+            ),
+        )
+        return data["choices"][0]["message"]["content"]
+
+    def _converse(self, query: str) -> str:
+        """Call the PINNED Bedrock (region, model) ONCE and return the raw assistant text. No
+        mid-demo re-walk: a per-call failure raises here and `parse` degrades to the rule
+        intent (determinism + latency)."""
+        resp = self._client.converse(
+            modelId=self.model_id,
+            messages=[{"role": "user", "content": [{"text": query}]}],
+            system=[{"text": SYSTEM_PROMPT}],
+            inferenceConfig={"temperature": 0.0, "maxTokens": 300},
+        )
+        return _extract_text(resp)
+
+    def _complete(self, query: str) -> str:
+        """Dispatch to the pinned provider (bedrock is the default path — injected test fakes
+        without a provider run the converse path)."""
+        if self._provider == "openai":
+            return self._openai_chat(query)
+        return self._converse(query)
 
     def parse(self, query: str) -> dict | None:
-        """Run the LLM parse and return a validated intent dict, or None on ANY failure.
-        Emits one best-effort Langfuse generation (input query, raw output, model id,
-        validated + dropped fields, latency)."""
+        """Run the LLM parse and return a validated intent dict, or None on ANY failure
+        (including an unavailable parser, when construction resolved nothing). Emits one
+        best-effort Langfuse generation (input query, raw output, model id, validated +
+        dropped fields, latency)."""
+        if self._client is None:
+            return None  # construction resolved nothing -> behave as today's parse-failure path
         raw: str | None = None
         validated: dict | None = None
         dropped: dict = {}
@@ -245,17 +415,19 @@ class LLMParser:
             "llm_parse", kind="generation", model=self.model_id, input=query
         ) as span:
             try:
-                raw = self._converse(query)
+                raw = self._complete(query)
                 validated, dropped = _validate(raw)
             except Exception as exc:  # noqa: BLE001 - never crash a query on an LLM failure
                 logger.debug(
-                    "LLM parse failed (%s: %s); rule intent will be used.",
-                    type(exc).__name__, exc,
+                    "LLM parse failed (%s); rule intent will be used.",
+                    _redact(f"{type(exc).__name__}: {exc}", self._openai_key),
                 )
                 validated = None
             span.update(
                 output=raw,
                 metadata={
+                    # pinned provider + model name in the trace — NEVER the key
+                    "provider": self._provider or "bedrock",
                     "model_id": self.model_id,
                     "validated": validated,
                     "dropped": dropped or None,

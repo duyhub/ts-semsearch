@@ -32,7 +32,8 @@ def _p(values: list[float], pct: float) -> float:
 def main() -> None:
     pois = load_pois()
     queries = [q.input_query for q in load_eval()]
-    pipe = FullPipeline(pois)  # model loads here (boot cost, excluded from per-query timing)
+    # MEASUREMENT: pinned local (provider AND mode) — G4 latency is a gate on the local demo config.
+    pipe = FullPipeline(pois, provider="local", mode="local")  # model loads here (boot cost, excluded from per-query timing)
 
     # COLD: clear the query-embed cache so each query pays a fresh bge-m3 forward
     shutil.rmtree(E.QCACHE_DIR, ignore_errors=True)
