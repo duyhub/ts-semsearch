@@ -1,0 +1,46 @@
+# Keep the build context tiny + secrets out. The Dockerfile COPYs only:
+#   pyproject.toml, uv.lock, src/, ui/, data/raw/, data/weights.json
+# Everything else is excluded here so it is never even sent to the daemon.
+
+# --- secrets: NEVER send to the build daemon ---
+.env
+**/*.key
+**/*.pem
+
+# --- VCS / local envs / caches ---
+.git
+.gitignore
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/__pycache__
+**/*.pyc
+.claude
+.playwright-mcp
+
+# --- generated / runtime data (rebuilt in-container; heavy) ---
+data/derived
+data/synth
+data/**/*.parquet
+data/**/*.npy
+**/.DS_Store
+
+# --- reports, docs, decks, extra source not needed to serve ---
+reports
+docs
+deck
+clients
+scripts
+tests
+openapi.json
+
+# --- markdown / notes (Dockerfile copies none of these) ---
+*.md
+
+# --- images / misc artifacts ---
+*.png
+*.jpg
+*.jpeg
+*.gif

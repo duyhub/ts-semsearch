@@ -166,6 +166,27 @@ Remote hosting without the local model: `SEMSEARCH_MODE=cloud` plus AWS credenti
 resolved (`mode`, `embeddings`, `llm_parse`, `llm_gate`, `query_rewrite`);
 `uv run python scripts/check_bedrock.py` previews all three modes against live credentials.
 
+## Deploy (Railway)
+
+Public demo link for judges — no GPU, no model download. Connect the repo on
+[railway.com](https://railway.com); Railway auto-detects the `Dockerfile` (config in
+`railway.json`). The image ships `SEMSEARCH_MODE=cloud` (the code default), so embeddings
+come from Bedrock and the local `bge-m3`/torch stack is excluded — the image is ~650 MB and
+cold-boots in ~5 s (`/health` gate, `healthcheckTimeout` 120 s covers Bedrock prewarm).
+
+Required service variables (Bedrock embeddings + Claude parse):
+
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — plus `AWS_SESSION_TOKEN` only for temporary creds.
+
+Optional:
+
+- `OPENAI_API_KEY` — LLM-parse fallback when Bedrock Claude is unavailable.
+- `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` — LLM tracing.
+
+`GET /health` reports what actually resolved (`mode`, `embeddings`, `llm_parse`). With no AWS
+creds the service still boots and serves the deterministic BM25-only floor (degraded, never a
+crash-loop). Railway injects `$PORT`; the container binds `0.0.0.0` and honors it.
+
 ## Verify
 
 ```bash
