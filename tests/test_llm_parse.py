@@ -142,6 +142,25 @@ def test_closed_vocab_sizes():
     assert "Quán cà phê" in L.CATEGORIES and "yên tĩnh" in L.ATTRIBUTES
 
 
+def test_prompt_version_is_v4_need_category():
+    # PROMPT_VERSION salts the disk llmcache; the v4 bump invalidates stale v3 entries so a
+    # pre-fix "đội bụng" / null-category parse can never be re-served.
+    assert L.PROMPT_VERSION == "v4-need-category"
+
+
+def test_system_prompt_has_need_inference_and_diacritic_contrast():
+    """v4 root-cause guards (cheap prompt-regression tripwire): the prompt must (a) instruct
+    need -> category inference with inline examples, and (b) carry the đói/đội contrastive
+    diacritic-restoration example that fixes the 'minh doi bung' mis-correction."""
+    prompt = L.SYSTEM_PROMPT
+    # (a) need-inference instruction + at least one hunger/thirst/fuel example mapping
+    assert "NEED" in prompt and "infer the single category" in prompt
+    assert "đói bụng/muốn ăn" in prompt  # a hunger NEED maps to a category, inline
+    assert "hết xăng" in prompt          # a state -> Trạm xăng need example
+    # (b) the đói (hungry) vs đội (carry) contrastive restoration example
+    assert "đói bụng" in prompt and 'NOT "đội bụng"' in prompt
+
+
 # --------------------------------------------------------------------------- #
 # Validation drops out-of-vocab values; location is never emitted             #
 # --------------------------------------------------------------------------- #

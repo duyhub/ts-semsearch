@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # validation-only edit (e.g. v3: case-only corrections are now rejected as no-ops) must
 # invalidate old cache entries exactly like a reworded prompt would, or a stale pre-fix
 # cache entry would keep serving a recapitalization "correction" forever.
-PROMPT_VERSION = "v3-case-noop"
+PROMPT_VERSION = "v4-need-category"
 # Disk cache for validated parses, keyed by (prompt version, provider, model, query). Lives
 # under the embedding cache root; tests monkeypatch this to an isolated tmp dir.
 LLMCACHE_DIR = CACHE_DIR / "llmcache"
@@ -157,11 +157,18 @@ SYSTEM_PROMPT = (
     "searching for a place (POI) by need, not by name.\n\n"
     "Return ONLY a JSON object (no prose, no code fence) with EXACTLY these keys:\n"
     '  "corrected_query": the user\'s query with typos fixed and missing Vietnamese '
-    "diacritics and tone marks restored; preserve the meaning exactly; do NOT add, remove, "
+    "diacritics and tone marks restored to the MOST PLAUSIBLE common reading in a "
+    'place-search context (e.g. "doi bung" -> "đói bụng" (hungry), NOT "đội bụng" (to '
+    'carry on the head)); "minh"/"mình" is the pronoun "mình" (I/me), never the proper '
+    "name Minh — do NOT capitalize it; preserve the meaning exactly; do NOT add, remove, "
     "or invent any place, need, or constraint; do NOT translate; do NOT expand abbreviations "
     'or shorthand (keep "q1", "hcm" as typed — deterministic code handles those); if the '
     "query is already clean, return it unchanged\n"
-    '  "category": one of the allowed categories below, or null\n'
+    '  "category": one of the allowed categories below, or null. When the query expresses a '
+    "NEED or state rather than naming a place type, infer the single category that fulfills "
+    "it (đói bụng/muốn ăn -> Nhà hàng; khát nước/muốn uống gì đó -> Quán cà phê, a drink "
+    "place, NOT Trạm xăng; hết xăng -> Trạm xăng; cần rút tiền -> ATM); use null only when "
+    "the need is genuinely ambiguous\n"
     '  "attributes": a list (possibly empty) of allowed attributes below\n'
     '  "price_pref": "cheap" | "expensive" | null\n'
     '  "open_after": the earliest opening time the user needs as "HH:MM" (24-hour), else null\n\n'

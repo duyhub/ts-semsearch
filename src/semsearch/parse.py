@@ -51,6 +51,53 @@ CATEGORY_KEYWORDS: dict[str, str] = {
     "điểm tham quan": "Điểm tham quan", "tham quan": "Điểm tham quan", "du lịch": "Điểm tham quan",
 }
 
+# Need keywords: DISPLAY (diacritic) NEED phrase -> canonical dataset category. A
+# conversational need-query ("mình đói bụng quá" = I'm hungry) names no place-type word,
+# so CATEGORY_KEYWORDS never fires and the category hard-filter stays disabled — the
+# ranking then collapses onto noisy semantic+popularity (a 24/7 gas station floats up).
+# This lexicon infers the category from the *need*; it is consulted ONLY when no explicit
+# CATEGORY_KEYWORDS match fired (place-type words always win), and matched need tokens are
+# consumed exactly like category-keyword tokens so a fully-explained need query has empty
+# residual (which is what re-enables the pipeline's category hard-filter).
+#
+# FOLD-AMBIGUITY: every key is a >=2-token phrase whenever its lead token folds onto an
+# unrelated word — "đói bụng" -> "doi bung" is safe as a bigram, but a bare "đói"/"doi"
+# would collide with đôi/đối/đồi, so it is NEVER added alone; the ONLY doi-based trigger is
+# the "đói bụng" bigram. Values reuse the exact 12 dataset category strings (no new values).
+# Phrases already covered by CATEGORY_KEYWORDS (rút tiền/ATM, hiệu thuốc/Nhà thuốc,
+# tham quan/Điểm tham quan) are intentionally omitted — the explicit pass handles them.
+NEED_KEYWORDS: dict[str, str] = {
+    # hunger / eating -> restaurant
+    "đói bụng": "Nhà hàng", "muốn ăn": "Nhà hàng", "ăn gì": "Nhà hàng",
+    "chỗ ăn": "Nhà hàng", "ăn uống": "Nhà hàng", "ăn ngon": "Nhà hàng",
+    "ăn trưa": "Nhà hàng", "ăn tối": "Nhà hàng", "bữa trưa": "Nhà hàng",
+    "bữa tối": "Nhà hàng",
+    # thirst / rest -> café
+    "khát nước": "Quán cà phê", "khát quá": "Quán cà phê", "muốn uống": "Quán cà phê",
+    "uống gì": "Quán cà phê", "giải khát": "Quán cà phê", "nghỉ chân": "Quán cà phê",
+    # fuel -> gas station
+    "đổ xăng": "Trạm xăng", "hết xăng": "Trạm xăng", "bơm xăng": "Trạm xăng",
+    # medicine / illness -> pharmacy
+    "mua thuốc": "Nhà thuốc", "thuốc cảm": "Nhà thuốc", "bị ốm": "Nhà thuốc",
+    "bị cảm": "Nhà thuốc",
+    # movies -> cinema
+    "xem phim": "Rạp phim", "coi phim": "Rạp phim",
+    # medical care -> hospital
+    "khám bệnh": "Bệnh viện", "cấp cứu": "Bệnh viện", "đi khám": "Bệnh viện",
+    # shopping -> mall
+    "mua sắm": "Trung tâm thương mại", "đi mua đồ": "Trung tâm thương mại",
+    # EV charging -> charging station
+    "sạc xe điện": "Trạm sạc điện", "hết pin xe": "Trạm sạc điện",
+    "sạc ô tô điện": "Trạm sạc điện",
+    # lodging -> hotel
+    "qua đêm": "Khách sạn", "đặt phòng": "Khách sạn", "nghỉ qua đêm": "Khách sạn",
+    "chỗ ngủ": "Khách sạn",
+    # strolling / fresh air -> park
+    "đi dạo": "Công viên", "hóng mát": "Công viên",
+    # sightseeing / outings -> attraction
+    "chỗ chơi": "Điểm tham quan", "đi chơi ở đâu": "Điểm tham quan",
+}
+
 # Price-direction keywords: DISPLAY (diacritic) phrase -> "cheap" | "expensive". Read
 # from the haystack independently of the stopword/residual logic, so "rẻ"/"sang" inform
 # price without ever becoming spurious subjects. Keys carry correct diacritics so token-
@@ -90,6 +137,7 @@ class Parser:
         self.city_vocab = {fold(p.city): p.city for p in pois}
         # longest folded match first (keys are diacritic display forms)
         self._cat_keys = sorted(CATEGORY_KEYWORDS, key=lambda k: len(fold(k)), reverse=True)
+        self._need_keys = sorted(NEED_KEYWORDS, key=lambda k: len(fold(k)), reverse=True)
         self._attr_keys = sorted(ATTRIBUTE_KEYWORDS, key=lambda k: len(fold(k)), reverse=True)
         # corpus document-frequency of subject tokens, for distinctive-term detection
         self._df: Counter[str] = Counter()
@@ -175,6 +223,21 @@ class Parser:
                     category = cand
                     consumed.update(fold(key).split())
                     break
+
+        # Need inference: a conversational need ("đói bụng") fills the category ONLY when
+        # no explicit place-type word already did (explicit always wins). Matched need
+        # tokens are consumed like category-keyword tokens, so the need query ends with an
+        # empty residual and the pipeline category hard-filter (SPEC §6) fires. Skipped
+        # entirely on an explicit match, so a compound query's leftover need words (e.g.
+        # "mua sắm" in a "... nhà hàng ..." query) still block the filter as before.
+        if category is None:
+            for key in self._need_keys:
+                if token_key_matches(hay, text, key):
+                    cand = NEED_KEYWORDS[key]
+                    if cand in self.categories:
+                        category = cand
+                        consumed.update(fold(key).split())
+                        break
 
         required: list[str] = []
         for key in self._attr_keys:

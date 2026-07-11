@@ -7,12 +7,21 @@ from semsearch.data import load_pois
 from semsearch.geo import Gazetteer
 from semsearch.normalize import canonicalize
 from semsearch.parse import Parser
+from semsearch.pipeline import FullPipeline
+from semsearch.rank import load_weights
 
 
 @pytest.fixture(scope="module")
 def parser():
     pois = load_pois()
     return Parser(pois, Gazetteer(pois))
+
+
+@pytest.fixture(scope="module")
+def pipe():
+    # local/local pipeline (the demo config); exercises the parse fix end-to-end
+    # through the constraint hard-filter (SPEC §6).
+    return FullPipeline(load_pois(), weights=load_weights(), mode="local")
 
 
 def test_work_cafe_intent(parser):
@@ -275,3 +284,87 @@ def test_clean_query_unaffected_by_correction(parser):
     assert intent.content_terms == []
     assert not intent.has_residual
     assert intent.normalized == "quan ca phe yen tinh"
+
+
+# --- Need -> category inference (conversational need-queries; SPEC §7, PRD FR-2) ---
+# A need phrase ("đói bụng" = I'm hungry) with NO explicit place-type word fills the
+# category so the pipeline's category hard-filter can fire. Need tokens are consumed
+# exactly like category-keyword tokens, so a fully-explained need query has no residual.
+
+def test_need_hunger_sets_restaurant_and_empties_residual(parser):
+    intent = parser.parse("mình đói bụng quá, mình ở TPHCM")
+    assert intent.category == "Nhà hàng"
+    assert intent.city == "TP.HCM"
+    assert intent.residual_terms == []
+    assert not intent.has_residual
+
+
+def test_need_hunger_folded_form_same_intent(parser):
+    # no-diacritics form parses identically (folding is what makes plain input match).
+    intent = parser.parse("minh doi bung qua, minh o tphcm")
+    assert intent.category == "Nhà hàng"
+    assert intent.city == "TP.HCM"
+    assert intent.residual_terms == []
+
+
+def test_need_thirst_maps_to_cafe(parser):
+    assert parser.parse("khat nuoc qua").category == "Quán cà phê"
+
+
+def test_need_out_of_gas_maps_to_gas_station(parser):
+    assert parser.parse("het xang roi").category == "Trạm xăng"
+
+
+def test_need_buy_cold_medicine_maps_to_pharmacy(parser):
+    assert parser.parse("can mua thuoc cam").category == "Nhà thuốc"
+
+
+def test_explicit_category_unaffected_by_need_layer(parser):
+    # a clean explicit-category query is untouched: category + attrs unchanged.
+    intent = parser.parse("quán cà phê yên tĩnh")
+    assert intent.category == "Quán cà phê"
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_explicit_category_beats_need(parser):
+    # BOTH an explicit place-type word AND a need phrase -> the explicit one wins.
+    intent = parser.parse("quán cà phê đói bụng quá")
+    assert intent.category == "Quán cà phê"
+
+
+def test_fold_collision_doi_without_bung_no_category(parser):
+    # 'đôi' folds to 'doi' (collides with đói); it must NOT trigger Nhà hàng.
+    # The only doi-based need trigger is the bigram "đói bụng".
+    assert parser.parse("cặp đôi chụp hình").category != "Nhà hàng"
+    assert parser.parse("đôi giày").category is None
+    assert parser.parse("ngọn đồi quá đẹp").category is None
+
+
+def test_need_with_residual_subject_preserved(parser):
+    # need fills the category, but a genuine distinctive subject still flows to
+    # content_terms (subject-preservation, SPEC §6); need tokens leave no residual.
+    intent = parser.parse("đói bụng muốn ăn bún chả")
+    assert intent.category == "Nhà hàng"
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+    assert "doi" not in intent.residual_terms and "bung" not in intent.residual_terms
+
+
+# --- End-to-end: the parse fix must fix the ranked lineup (SPEC §6 hard-filter) ---
+
+def test_hunger_query_returns_only_hcmc_restaurants(pipe):
+    # Before the fix category=None floated a 24/7 gas station + a mall into the top-10.
+    # With category="Nhà hàng" + city the hard-filter leaves only TP.HCM restaurants.
+    _, results = pipe.search("minh doi bung qua, minh o tphcm", k=10)
+    assert results
+    top10 = results[:10]
+    assert all(r.poi.category == "Nhà hàng" for r in top10)
+    assert all(r.poi.city == "TP.HCM" for r in top10)
+    assert all(r.poi.category not in ("Trạm xăng", "Trung tâm thương mại", "ATM")
+               for r in top10)
+
+
+def test_gas_need_still_ranks_gas_stations(pipe):
+    # Reverse case must keep working: an explicit gas need ranks gas stations.
+    _, results = pipe.search("tìm chỗ đổ xăng ở quận 1", k=10)
+    assert results
+    assert all(r.poi.category == "Trạm xăng" for r in results)
