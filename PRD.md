@@ -180,7 +180,7 @@ under time pressure; **P2** = stretch.
   sponsor's `Ranking_Signals` sheet names: relevance, distance, rating, popularity,
   business_attributes, review_signal, freshness. Our linear ranker implements:
   `relevance` (embedding similarity), `attributes` (taxonomy-canonical required+soft match),
-  `distance` (decay from resolved anchor or request lat/lon; neutral without one),
+  `distance` (decay from resolved anchor or request lat/lon; weight inactive without one),
   `rating` (Bayesian-smoothed by review_count), `popularity` (dataset popularity_score),
   `open_now` (opening-hours vs query time / "mở khuya" constraint — the time dimension of
   business_attributes), and `review_signal` (query needs matched against POI tags +

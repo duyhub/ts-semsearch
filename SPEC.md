@@ -244,7 +244,7 @@ also drives `open_now` (its time dimension), plus two of our own additions — `
 | `semantic` | relevance_score | **fixed, query-independent** transform of the fused RRF/cosine relevance — clamp+rescale a calibrated cosine band (e.g. `[0.2,0.8]→[0,1]`), **NOT per-query min-max**. Min-max within the candidate set forces the top result to 1.0 even on weak matches, inflating confidence, corrupting the explanation bars (a scored dimension), and making tuned weights depend on candidate-set composition (worse private-eval transfer). Test: two candidate sets with the same top POI yield the same semantic score (eng-review OV6) |
 | `attributes` | business_attributes | matched required+soft attrs / requested (taxonomy canonical, structured `attributes` field only) |
 | `category` | — (our addition) | 1.0 if the POI matches the parsed category, 0.0 on mismatch, 0.5 (neutral) when no category is parsed — a category-consistency prior so malls/gas stations don't outrank cafés on a "cà phê" query. A soft signal, not a hard filter |
-| `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; 0.5 neutral if no anchor |
+| `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; diagnostic value 0.5 but weight excluded if no anchor |
 | `rating` | rating_score | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, C=global mean, scaled from [3.5,5]. **m is a low fixed prior (~20–50, not 200)** — on 111 POIs m=200 shrinks nearly every POI to the global mean and flattens the signal; verify the smoothed-rating spread in Phase 4 (eng-review TODO-2) |
 | `popularity` | popularity_score | popularity_score / 100 |
 | `open_now` | business_attributes (time) | 1 if open at the **injected reference time** / satisfies `open_after`, else 0.3 (0.5 if unknown). Time is injected as `now: datetime`, never wall-clock: eval passes a committed constant (e.g. Sat 14:00 Asia/Ho_Chi_Minh), the API passes real now — otherwise the same query scored at 10am vs 11pm produces different rankings and G3 stops being reproducible (eng-review A1) |
@@ -435,7 +435,7 @@ comparison reads.
 | Loading | Per-column skeleton cards (not a spinner); latency badge shows "…"; chips stay tappable |
 | Empty (`meta.source="fallback"`, C1 backstop) | Honest line: "Không có kết quả khớp — đây là các địa điểm phổ biến gần bạn" + the fallback results; never a bare "No results" |
 | Error (API 5xx/timeout) | Inline card in the results area: "Máy chủ đang bận, thử lại" + a retry button; the other column and chips stay usable |
-| No anchor (location query, gazetteer miss) | Map panel stays collapsed; a subtle note "Không xác định được vị trí neo" on affected cards; distance signal renders neutral, not blank |
+| No anchor (location query, gazetteer miss) | Map uses its labeled display-only default; no coordinates enter ranking and the distance weight is inactive |
 | Partial (semantic ready, map tiles slow) | Results render immediately; map panel shows its own loading state independently |
 
 **Typography.** A real Vietnamese-first typeface with full diacritic coverage — **Be Vietnam Pro**

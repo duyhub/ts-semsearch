@@ -7,6 +7,7 @@ import pytest
 
 from semsearch.data import POI, Anchor, QueryIntent
 from semsearch.rank import (
+    LinearRanker,
     attributes_signal,
     category_signal,
     distance_signal,
@@ -64,6 +65,26 @@ def test_distance_signal_neutral_without_anchor_and_one_at_zero():
     p = _poi(lat=10.77, lon=106.70)
     intent = _intent(anchor=Anchor("x", 10.77, 106.70))
     assert distance_signal(intent, p) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_distance_weight_is_excluded_without_a_real_anchor():
+    ranker = LinearRanker(
+        weights={"semantic": 1.0, "distance": 1.0},
+        now=datetime(2026, 7, 11, 14, 0),
+        global_rating_mean=4.2,
+    )
+    score, breakdown = ranker.score(1.0, _intent(), _poi(), set(), set())
+    assert breakdown["distance"] == 0.5  # diagnostic value remains explicit
+    assert score == pytest.approx(1.0)  # distance weight is absent, not averaged as 0.5
+
+    anchored_score, _ = ranker.score(
+        0.0,
+        _intent(anchor=Anchor("x", 10.77, 106.70)),
+        _poi(),
+        set(),
+        set(),
+    )
+    assert anchored_score == pytest.approx(0.5)  # (semantic 0 + distance 1) / 2
 
 
 def test_rating_signal_monotonic():

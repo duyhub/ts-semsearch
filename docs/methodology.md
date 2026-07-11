@@ -69,7 +69,7 @@ query) keeps mis-parses like "nơi mua sắm có nhiều nhà hàng…" from ove
 | Sponsor signal | Our signal | Definition |
 |---|---|---|
 | `relevance_score` | **semantic** | hybrid BM25+dense RRF relevance, calibrated to [0,1] by a fixed max (not per-query min-max) |
-| `distance_score` | **distance** | `exp(-d_km/3)` from the resolved anchor; neutral 0.5 without one |
+| `distance_score` | **distance** | `exp(-d_km/3)` from the resolved anchor; diagnostic value 0.5 but weight excluded without one |
 | `rating_score` | **rating** | Bayesian `(v/(v+m))·R + (m/(v+m))·C`, low prior `m` so the narrow 3.8–4.7 band still varies |
 | `popularity_score` | **popularity** | `popularity/100` |
 | `review_signal` | **review** | query need-terms matched against POI tags + description (distinct from structured attributes) |

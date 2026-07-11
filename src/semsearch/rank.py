@@ -184,6 +184,10 @@ class LinearRanker:
     def score(self, relevance: float, intent: QueryIntent, poi: POI,
               attrs_folded: set[str], review_tokens: set[str]) -> tuple[float, dict[str, float]]:
         b = self.signals(relevance, intent, poi, attrs_folded, review_tokens)
-        total_w = sum(self.weights.values()) or 1.0
-        s = sum(self.weights.get(k, 0.0) * b[k] for k in SIGNALS) / total_w
+        # Distance is query-active only when a real request/query anchor exists.
+        # A UI-only default map focus never enters QueryIntent, so denied location
+        # permission cannot dilute other signals or influence ranking scores.
+        active = tuple(k for k in SIGNALS if not (k == "distance" and intent.anchor is None))
+        total_w = sum(self.weights.get(k, 0.0) for k in active) or 1.0
+        s = sum(self.weights.get(k, 0.0) * b[k] for k in active) / total_w
         return s, b

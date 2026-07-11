@@ -126,8 +126,10 @@ uv run uvicorn semsearch.api:create_app --factory --port 8000
 The demo UI requests browser location once without delaying search. When permission is
 granted, it sends paired `lat`/`lon` to both search lanes: semantic results are proximity-
 ranked, while the BM25 comparison lane remains keyword-ranked and only gains distance/filter
-context. If location is denied, unsupported, or times out, search continues with the engine's
-normal non-location fallback. Browser geolocation works on `localhost` or HTTPS origins.
+context. If location is denied, unsupported, or times out, the map centers on **Trung tâm Hà Nội**
+as a clearly labeled display-only default. Those default coordinates are never sent to the API:
+the distance weight is inactive and ranking keeps its normal non-location behavior. An explicit
+location in the query still takes precedence. Browser geolocation works on `localhost` or HTTPS origins.
 
 ### Deployment modes
 
