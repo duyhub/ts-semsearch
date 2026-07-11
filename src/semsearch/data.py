@@ -78,6 +78,8 @@ class QueryIntent:
     has_residual: bool = False  # any leftover content token -> category hard-filter ineligible
     residual_terms: list[str] = field(default_factory=list)  # ALL leftover terms (>= content_terms);
     # lets the pipeline tell a discredited subject from genuine unexplained content
+    corrected_query: str | None = None  # LLM-corrected query (typos fixed, diacritics restored)
+    # used for retrieval when present; None = the raw query is used unchanged
 
 
 @dataclass

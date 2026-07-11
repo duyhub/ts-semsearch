@@ -370,7 +370,7 @@ def test_pipeline_falls_back_to_local_on_doc_build_failure(tmp_path, monkeypatch
     monkeypatch.setattr(P, "get_embedder", factory)  # used by DenseIndex construction
 
     with caplog.at_level("WARNING"):
-        pipe = P.FullPipeline(load_pois(), provider="bedrock-cohere")
+        pipe = P.FullPipeline(load_pois(), provider="bedrock-cohere", mode="local")
     assert pipe.dense.emb is local  # rebuilt in the LOCAL vector space, not crashed
     assert flaky.calls >= 2  # preflight passed, doc build actually attempted
     assert any("local" in r.message.lower() for r in caplog.records)
@@ -387,7 +387,7 @@ def test_pipeline_local_doc_build_failure_still_propagates(tmp_path, monkeypatch
     monkeypatch.setattr(P, "get_embedder", lambda provider="local": broken)
 
     with pytest.raises(RuntimeError, match="corrupt HF cache"):
-        P.FullPipeline(load_pois(), provider="local")
+        P.FullPipeline(load_pois(), provider="local", mode="local")
 
 
 # --------------------------------------------------------------------------- #

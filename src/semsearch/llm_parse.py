@@ -33,6 +33,7 @@ stay rule-owned.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -42,10 +43,23 @@ from pathlib import Path
 
 from . import tracing
 from .data import QueryIntent
-from .embeddings import resolve_bedrock_regions  # shared region-fallback chain (FR-10)
+# CACHE_DIR / _safe are shared so the LLM disk cache lives beside the embedding caches and
+# sanitizes provider/model ids into filesystem-safe path segments identically.
+from .embeddings import CACHE_DIR, _safe, resolve_bedrock_regions  # FR-10 region chain
+from .normalize import fold  # diacritic/punctuation folding — the corrected_query overlap guard
 from .parse import ATTRIBUTE_KEYWORDS, CATEGORY_KEYWORDS
 
 logger = logging.getLogger(__name__)
+
+# PROMPT_VERSION salts the disk-cache key: bump it on ANY change to SYSTEM_PROMPT OR to the
+# `_validate` validation semantics — the disk cache stores POST-validation output, so a
+# validation-only edit (e.g. v3: case-only corrections are now rejected as no-ops) must
+# invalidate old cache entries exactly like a reworded prompt would, or a stale pre-fix
+# cache entry would keep serving a recapitalization "correction" forever.
+PROMPT_VERSION = "v3-case-noop"
+# Disk cache for validated parses, keyed by (prompt version, provider, model, query). Lives
+# under the embedding cache root; tests monkeypatch this to an isolated tmp dir.
+LLMCACHE_DIR = CACHE_DIR / "llmcache"
 
 # Model id: env override, else a fallback chain of ids for the same model. Accounts AND regions
 # differ in which inference profiles exist (verified live on the AABW account: ap-southeast-1
@@ -142,6 +156,11 @@ SYSTEM_PROMPT = (
     "You extract structured search intent from a Vietnamese maps query. The user is "
     "searching for a place (POI) by need, not by name.\n\n"
     "Return ONLY a JSON object (no prose, no code fence) with EXACTLY these keys:\n"
+    '  "corrected_query": the user\'s query with typos fixed and missing Vietnamese '
+    "diacritics and tone marks restored; preserve the meaning exactly; do NOT add, remove, "
+    "or invent any place, need, or constraint; do NOT translate; do NOT expand abbreviations "
+    'or shorthand (keep "q1", "hcm" as typed — deterministic code handles those); if the '
+    "query is already clean, return it unchanged\n"
     '  "category": one of the allowed categories below, or null\n'
     '  "attributes": a list (possibly empty) of allowed attributes below\n'
     '  "price_pref": "cheap" | "expensive" | null\n'
@@ -173,19 +192,72 @@ def _loads(raw: str) -> object:
             return None
 
 
-def _validate(raw: str) -> tuple[dict | None, dict]:
+def _validate_corrected_query(value: object, original: str, out: dict, dropped: dict) -> None:
+    """Validate the LLM's `corrected_query` (its typo/diacritic repair of the user query),
+    writing the accepted string to `out["corrected_query"]` or None with a `dropped` reason.
+
+    An ABSENT/null key (legacy 4-key parse) is None WITHOUT a dropped reason — a missing
+    correction is not an error. A PRESENT value is rejected (reason recorded) when it is not
+    a string, is empty after cleanup, exceeds 200 chars, is case-only-different from the
+    original (nothing WORTH correcting), or shares no folded token with the original
+    (refusal/hallucination guard). Fold-equality is NOT itself a rejection: restoring
+    diacritics onto an unaccented query changes the casefolded form too (different letters,
+    not just different case) and is exactly what we want to keep. Never raises."""
+    if value is None:  # key absent or explicit null -> no correction offered (not an error)
+        out["corrected_query"] = None
+        return
+    if not isinstance(value, str):
+        out["corrected_query"] = None
+        dropped["corrected_query"] = "not-a-string"
+        return
+    cleaned = re.sub(r"\s+", " ", value).strip()  # strip + collapse newlines/runs to one space
+    if not cleaned:
+        reason = "empty"
+    elif len(cleaned) > 200:
+        reason = "too-long"
+    elif cleaned.casefold() == original.casefold():
+        # "no-op" also covers case-only differences (subsumes plain exact-equality: equal
+        # strings are trivially casefold-equal too). A live A/B (2026-07-11) showed the LLM
+        # "correcting" already-clean queries by ONLY recapitalizing proper nouns (e.g.
+        # "gần hồ gươm" -> "gần hồ Gươm") — semantically nothing, since fold() already
+        # lowercases for matching, but it perturbs the dense embedding with pure noise
+        # (measured: -0.011 NDCG@5 on clean queries). casefold() (not lower()) is required
+        # for Vietnamese case pairs: đ/Đ and accented uppercase (à/À, ơ/Ơ, ...) fold
+        # correctly under casefold but not reliably under a naive .lower().
+        reason = "no-op"
+    elif not (set(fold(cleaned).split()) & set(fold(original).split())):
+        reason = "no-overlap"  # zero shared folded tokens: a refusal/hallucination, not a fix
+    else:
+        out["corrected_query"] = cleaned
+        return
+    out["corrected_query"] = None
+    dropped["corrected_query"] = reason
+
+
+def _validate(raw: str, original: str) -> tuple[dict | None, dict]:
     """Validate the raw LLM output against the closed vocabularies. Returns
     (intent_dict, dropped): `intent_dict` is None only when the output is not a JSON
     object (a hard failure); otherwise every field is validated and out-of-vocab values
     are dropped. Location keys (city/district) are NOT part of the contract — if the
     model emits them anyway they are silently ignored here, so a hallucinated location
-    can never reach the pipeline's hard location filter. Never raises."""
+    can never reach the pipeline's hard location filter.
+
+    `original` is the user's raw query, needed ONLY to validate `corrected_query` (the
+    LLM's typo/diacritic repair of that query): it is kept only when it is a non-empty
+    string, at most 200 chars, differs from the original by more than CASE after whitespace
+    cleanup (case-only recapitalization is a no-op — it perturbs dense embeddings with zero
+    semantic gain), and shares at least one folded token with the original (a
+    refusal/hallucination sharing no token is dropped). Fold-equality is deliberately NOT a
+    rejection on its own — restoring diacritics onto an unaccented query changes the
+    casefolded form too and is the whole point. Never raises."""
     obj = _loads(raw)
     if not isinstance(obj, dict):
         return None, {"reason": "not-a-json-object"}
 
     dropped: dict = {}
     out: dict = {}
+
+    _validate_corrected_query(obj.get("corrected_query"), original, out, dropped)
 
     cat = obj.get("category")
     if isinstance(cat, str) and cat in _CATEGORY_SET:
@@ -401,13 +473,54 @@ class LLMParser:
             return self._openai_chat(query)
         return self._converse(query)
 
-    def parse(self, query: str) -> dict | None:
+    def _cache_path(self, query: str) -> Path:
+        """Disk-cache path for THIS parse, keyed by (prompt version, provider, model, query).
+        LLMCACHE_DIR and PROMPT_VERSION are read as module globals at CALL time (not captured
+        as defaults) so tests can monkeypatch them per case. A rewording of SYSTEM_PROMPT must
+        bump PROMPT_VERSION so the old key never serves a stale parse."""
+        key = hashlib.sha1(
+            f"{PROMPT_VERSION}:{self._provider}:{self.model_id}:{query}".encode()
+        ).hexdigest()
+        bucket = f"{_safe(self._provider or 'bedrock')}.{_safe(self.model_id)}"
+        return LLMCACHE_DIR / bucket / f"{key}.json"
+
+    @staticmethod
+    def _cache_read(path: Path) -> dict | None:
+        """Return the cached validated dict, or None on a miss / unreadable / non-dict file.
+        A corrupt cache entry must never break a query — it degrades to a fresh parse."""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # missing file or malformed JSON -> treat as a miss
+            return None
+        return data if isinstance(data, dict) else None
+
+    @staticmethod
+    def _cache_write(path: Path, validated: dict) -> None:
+        """Persist a validated (non-None) parse. Best-effort: a write failure is swallowed so
+        it can never break a query. ensure_ascii=False keeps Vietnamese diacritics readable."""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(validated, ensure_ascii=False), encoding="utf-8")
+        except OSError:  # noqa: BLE001 - the cache is an optimization, never a hard dependency
+            pass
+
+    def parse(self, query: str, *, use_cache: bool = True) -> dict | None:
         """Run the LLM parse and return a validated intent dict, or None on ANY failure
         (including an unavailable parser, when construction resolved nothing). Emits one
         best-effort Langfuse generation (input query, raw output, model id, validated +
-        dropped fields, latency)."""
+        dropped fields, latency).
+
+        A disk cache (keyed by prompt version + provider + model + query) short-circuits the
+        network call for a repeat query; only NON-None validated results are cached (failures
+        are never cached, so a transient outage self-heals). `use_cache=False` bypasses both
+        the read and the write."""
         if self._client is None:
             return None  # construction resolved nothing -> behave as today's parse-failure path
+        cache_path = self._cache_path(query) if use_cache else None
+        if cache_path is not None:
+            cached = self._cache_read(cache_path)
+            if cached is not None:
+                return cached  # cache hit: skip the network call (and its span) entirely
         raw: str | None = None
         validated: dict | None = None
         dropped: dict = {}
@@ -416,7 +529,7 @@ class LLMParser:
         ) as span:
             try:
                 raw = self._complete(query)
-                validated, dropped = _validate(raw)
+                validated, dropped = _validate(raw, query)
             except Exception as exc:  # noqa: BLE001 - never crash a query on an LLM failure
                 logger.debug(
                     "LLM parse failed (%s); rule intent will be used.",
@@ -433,6 +546,8 @@ class LLMParser:
                     "dropped": dropped or None,
                 },
             )
+        if cache_path is not None and validated is not None:
+            self._cache_write(cache_path, validated)  # never cache None / failures
         return validated
 
 

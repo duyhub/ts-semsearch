@@ -13,7 +13,7 @@ def pipe():
     # Serve the TUNED weights (load_weights) — the exact config the live API runs, so
     # these behavioural tests validate what the demo actually serves (C6), not the
     # untuned DEFAULT_WEIGHTS.
-    return FullPipeline(load_pois(), weights=load_weights())
+    return FullPipeline(load_pois(), weights=load_weights(), mode="local")
 
 
 def test_anchor_gate_keeps_near_anchor_on_top(pipe):

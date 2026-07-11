@@ -63,6 +63,10 @@ class Meta(BaseModel):
     limitApplied: int
     tookMs: float
     source: str = "semsearch"
+    # FR-4: the LLM-corrected query (typos fixed, diacritics restored) when it differs from the
+    # `query` echo. Additive + optional — popped from clean-query responses so they stay
+    # contract-exact. Declared here so it appears in the OpenAPI schema.
+    correctedQuery: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
@@ -159,6 +163,19 @@ def _llm_status(pipeline) -> str:
     if parser is None or parser._client is None:
         return "rules-only"
     return f"{parser._provider or 'bedrock'}+{parser.model_id}"
+
+
+def _apply_corrected_query(payload: dict, intent, q: str) -> dict:
+    """Surface the LLM-corrected query additively as meta.correctedQuery, in place, ONLY when a
+    correction exists AND differs from the raw echo `q`. Otherwise the key is popped so a clean
+    query (or the rule-only keyword lane) stays byte-identical to the contract shape (Meta
+    declares correctedQuery, so model_dump() always emits it — the pop keeps it out)."""
+    corrected = getattr(intent, "corrected_query", None)
+    if corrected and corrected != q:
+        payload["meta"]["correctedQuery"] = corrected
+    else:
+        payload["meta"].pop("correctedQuery", None)
+    return payload
 
 
 def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL_NOW,
@@ -279,6 +296,10 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             "mode": pipeline.mode,
             "embeddings": _embeddings_status(pipeline),
             "llm_parse": _llm_status(pipeline),
+            # query rewrite is 'on' only when it can actually fire: the switch is on AND the
+            # LLM parse gate is on (the correction rides that parse).
+            "query_rewrite": "on" if (pipeline._query_rewrite
+                                      and pipeline._llm_parser is not None) else "off",
         }
 
     @app.get("/v1/search", response_model=SearchResponse)
@@ -298,15 +319,16 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             return err
         rid, q, limit, ref, radius, box, category = parsed
         t0 = time.perf_counter()
-        _, picked, source = _rank_filtered(q, limit=limit, category=category, ref=ref,
-                                           radius=radius, bbox=box,
-                                           engine="keyword" if engine == "keyword" else "full")
+        intent, picked, source = _rank_filtered(q, limit=limit, category=category, ref=ref,
+                                                radius=radius, bbox=box,
+                                                engine="keyword" if engine == "keyword" else "full")
         took = (time.perf_counter() - t0) * 1000
         results = [_place(p, s, ref, source) for p, s, _ in picked]
         resp = SearchResponse(query=q, results=results,
                               meta=Meta(count=len(results), limitApplied=limit,
                                         tookMs=round(took, 2), source=source))
-        return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
+        payload = _apply_corrected_query(resp.model_dump(), intent, q)  # query echo stays ORIGINAL
+        return JSONResponse(content=payload, headers={"X-Request-Id": rid})
 
     @app.get("/v1/semantic-search", response_model=SemanticSearchResponse)
     def semantic_search(
@@ -345,7 +367,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
                                       meta=Meta(count=len(results), limitApplied=limit,
                                                 tookMs=round(took, 2), source=source),
                                       weights={k: round(w, 4) for k, w in pipeline.ranker.weights.items()})
-        return JSONResponse(content=resp.model_dump(), headers={"X-Request-Id": rid})
+        payload = _apply_corrected_query(resp.model_dump(), intent, q)  # query echo stays ORIGINAL
+        return JSONResponse(content=payload, headers={"X-Request-Id": rid})
 
     return app
 

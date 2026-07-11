@@ -828,6 +828,17 @@
             "type": "string",
             "title": "Source",
             "default": "semsearch"
+          },
+          "correctedQuery": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctedquery"
           }
         },
         "type": "object",

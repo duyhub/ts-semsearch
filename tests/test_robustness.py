@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from semsearch.adversarial import ADVERSARIAL
 from semsearch.api import create_app
 
-client = TestClient(create_app(prewarm=False))
+client = TestClient(create_app(prewarm=False, mode="local"))
 ENDPOINTS = ("/v1/search", "/v1/semantic-search")
 
 
