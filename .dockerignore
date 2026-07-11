@@ -1,0 +1,30 @@
+# Keep the build context small and deterministic. The Dockerfile COPYs only the
+# paths it needs, but excluding these also speeds up context upload on the VPS.
+.git/
+.idea/
+.nimbalyst/
+.pytest_cache/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Derived data is rebuilt at runtime (in-memory dense index + volume-backed
+# query cache) — never ship the host's copy.
+data/derived/
+*.npy
+
+# Excel temp lock files (e.g. ~$dataset.xlsx) must never enter the image.
+data/raw/~$*
+
+# Not needed at runtime.
+tests/
+deck/
+reports/
+docs/
+clients/
+node_modules/
+ui/.next/
+*.png
+.DS_Store
+*.log

@@ -1,0 +1,21 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Add this block to /Users/mac/Projects/experimental/myvps/caddy/Caddyfile,
+# then reload Caddy:  docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# Prerequisites:
+#   • DNS A/AAAA record for the subdomain → your VPS IP (Caddy auto-provisions TLS).
+#   • The `semsearch` container is up on the shared `caddy` network.
+# Change the hostname to a subdomain you control.
+# ─────────────────────────────────────────────────────────────────────────────
+semsearch.ducanphatcons.com {
+	reverse_proxy semsearch:8000
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	encode gzip zstd
+}

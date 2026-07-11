@@ -1,0 +1,53 @@
+name: tasco-semsearch
+
+# Runs behind the shared Caddy reverse proxy at
+#   /Users/mac/Projects/experimental/myvps/caddy
+# Caddy reaches this service by container name on the external `caddy` network
+# (same pattern as the paperless/webmail stacks). Add the vhost block from
+# deploy/Caddyfile.snippet to that Caddyfile and reload Caddy.
+
+services:
+  semsearch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tasco-semsearch:latest
+    container_name: semsearch
+    restart: unless-stopped
+    environment:
+      # local (default, self-contained bge-m3) | local-first | cloud (Bedrock).
+      # .env in this directory is auto-loaded by compose for these ${...} values.
+      SEMSEARCH_MODE: ${SEMSEARCH_MODE:-local}
+      # ── cloud / Bedrock mode (optional) — uncomment this block AND set .env ──
+      # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      # SEMSEARCH_BEDROCK_REGION: ${SEMSEARCH_BEDROCK_REGION:-ap-southeast-1}
+      # SEMSEARCH_LLM_PARSE: ${SEMSEARCH_LLM_PARSE:-off}
+      # LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      # LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      # LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    volumes:
+      - hf_models:/models                    # bge-m3 weights: survive restarts + rebuilds
+      - semsearch_qcache:/app/data/derived   # query-embedding cache: keeps warm latency warm
+    healthcheck:
+      # No curl in the slim image — hit /health with the venv's python. urlopen
+      # raises (non-zero exit) on any non-2xx, marking the container unhealthy.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s                     # first boot downloads the ~2.3 GB model
+    networks:
+      - caddy
+
+volumes:
+  hf_models:
+  semsearch_qcache:
+
+networks:
+  # Created by the Caddy stack (caddy/docker-compose.yml declares `name: caddy`).
+  # Bring that stack up first, or `docker network create caddy`.
+  caddy:
+    external: true
+    name: caddy
