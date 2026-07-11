@@ -89,3 +89,47 @@ def resolve_query_rewrite() -> bool:
         QUERY_REWRITE_ENV, raw, DEFAULT_QUERY_REWRITE,
     )
     return DEFAULT_QUERY_REWRITE
+
+
+LLM_GATE_ENV = "SEMSEARCH_LLM_GATE"
+VALID_LLM_GATES = ("auto", "always")
+
+# ============================================================================ #
+#  LLM GATE — skip the per-query LLM call when the query already looks CLEAN.  #
+#                                                                              #
+#  Every LLM parse costs ~1.7s. Measured on the official tune set, CLEAN       #
+#  queries gain nothing from it (rules 0.959 vs LLM 0.950 NDCG@5); the whole   #
+#  measured win (up to +0.22 NDCG at 1000 POIs) sits on DEGRADED queries —     #
+#  stripped diacritics, typos, mixed language. So the default STOPS paying the #
+#  latency on queries the LLM cannot help:                                     #
+#                                                                              #
+#  "auto"    (default) Deterministic degradation gate (NFR-5): the LLM fires   #
+#            ONLY for a query carrying a degradation signal — no Vietnamese    #
+#            diacritic at all, or a long out-of-vocab token. A clean, in-vocab #
+#            query skips the call and is byte-identical to the LLM-off path    #
+#            (no latency, no correction).                                      #
+#                                                                              #
+#  "always"  Today's behavior: EVERY query pays the LLM call. Useful when      #
+#            demoing the correction itself on an already-clean query.          #
+#                                                                              #
+#  The gate is inert whenever the LLM parse is off (local modes) — there is no #
+#  call to gate. Edit this line, or set SEMSEARCH_LLM_GATE=auto|always (env    #
+#  wins over this constant).                                                   #
+# ============================================================================ #
+DEFAULT_LLM_GATE = "auto"
+
+
+def resolve_llm_gate() -> str:
+    """The LLM-invocation gate: env SEMSEARCH_LLM_GATE wins over DEFAULT_LLM_GATE; an unknown
+    value logs a warning and falls back to the constant default ('auto')."""
+    raw = os.environ.get(LLM_GATE_ENV)
+    if raw is None:
+        return DEFAULT_LLM_GATE
+    value = raw.lower()
+    if value in VALID_LLM_GATES:
+        return value
+    logger.warning(
+        "unknown %s value %r (valid: %s); using default %r.",
+        LLM_GATE_ENV, raw, ", ".join(VALID_LLM_GATES), DEFAULT_LLM_GATE,
+    )
+    return DEFAULT_LLM_GATE

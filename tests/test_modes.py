@@ -62,8 +62,9 @@ def _isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(E, "QCACHE_DIR", tmp_path / "qcache")
     for var in ("SEMSEARCH_MODE", "SEMSEARCH_QUERY_REWRITE", "SEMSEARCH_LLM_PARSE",
-                "SEMSEARCH_BEDROCK_REGION", "SEMSEARCH_BEDROCK_REGIONS", "AWS_REGION",
-                "AWS_DEFAULT_REGION", "OPENAI_API_KEY", L.OPENAI_MODEL_ENV, L.CLAUDE_MODEL_ENV):
+                C.LLM_GATE_ENV, "SEMSEARCH_BEDROCK_REGION", "SEMSEARCH_BEDROCK_REGIONS",
+                "AWS_REGION", "AWS_DEFAULT_REGION", "OPENAI_API_KEY", L.OPENAI_MODEL_ENV,
+                L.CLAUDE_MODEL_ENV):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(L, "_REPO_ROOT", tmp_path / "no-repo")  # hide the real .env/ key
     monkeypatch.setattr(L, "LLMCACHE_DIR", tmp_path / "llmcache")  # isolate the LLM disk cache
@@ -164,6 +165,27 @@ def test_resolve_query_rewrite_precedence(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         assert C.resolve_query_rewrite() is True
     assert any("maybe" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_llm_gate_precedence(monkeypatch, caplog):
+    monkeypatch.delenv(C.LLM_GATE_ENV, raising=False)
+    # No env: resolve_llm_gate returns the CONSTANT, whatever it is (proven both ways).
+    monkeypatch.setattr(C, "DEFAULT_LLM_GATE", "auto")
+    assert C.resolve_llm_gate() == "auto"
+    monkeypatch.setattr(C, "DEFAULT_LLM_GATE", "always")
+    assert C.resolve_llm_gate() == "always"
+    monkeypatch.setattr(C, "DEFAULT_LLM_GATE", "auto")  # restore for env-override checks
+
+    for val in ("auto", "always"):
+        monkeypatch.setenv(C.LLM_GATE_ENV, val)
+        assert C.resolve_llm_gate() == val
+    monkeypatch.setenv(C.LLM_GATE_ENV, "ALWAYS")  # case-insensitive
+    assert C.resolve_llm_gate() == "always"
+
+    monkeypatch.setenv(C.LLM_GATE_ENV, "banana")  # unknown -> warn + constant default
+    with caplog.at_level("WARNING"):
+        assert C.resolve_llm_gate() == "auto"
+    assert any("banana" in r.getMessage() for r in caplog.records)
 
 
 def test_resolve_mode_constant_switch_env_still_wins(monkeypatch):
@@ -319,7 +341,8 @@ def test_health_reports_local_mode(pois, monkeypatch):
     body = TestClient(app).get("/health").json()
     assert body == {"status": "ok", "pois": len(pois), "mode": "local",
                     "embeddings": "local", "llm_parse": "rules-only",
-                    "query_rewrite": "off"}  # LLM off in local mode -> rewrite can't fire
+                    "query_rewrite": "off",  # LLM off in local mode -> rewrite can't fire
+                    "llm_gate": "auto"}       # degradation gate default (env cleared -> auto)
 
 
 def test_health_reports_query_rewrite_on_and_off(pois, monkeypatch):
@@ -334,6 +357,21 @@ def test_health_reports_query_rewrite_on_and_off(pois, monkeypatch):
     monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", "off")  # switch off wins even with the gate on
     app_off = create_app(pois, prewarm=False, mode="local")
     assert TestClient(app_off).get("/health").json()["query_rewrite"] == "off"
+
+
+def test_health_reports_llm_gate(pois, monkeypatch):
+    """/health surfaces the LLM degradation gate additively ('auto' default, 'always' when
+    forced) — the existing llm_parse / query_rewrite strings are untouched."""
+    monkeypatch.setattr(P, "get_embedder", lambda provider="local": UnitLocal())
+    # default: autouse `_isolated` clears SEMSEARCH_LLM_GATE -> "auto"
+    app_auto = create_app(pois, prewarm=False, mode="local")
+    body = TestClient(app_auto).get("/health").json()
+    assert body["llm_gate"] == "auto"
+    assert body["llm_parse"] == "rules-only" and body["query_rewrite"] == "off"  # unchanged
+
+    monkeypatch.setenv(C.LLM_GATE_ENV, "always")  # env forces every-query calls
+    app_always = create_app(pois, prewarm=False, mode="local")
+    assert TestClient(app_always).get("/health").json()["llm_gate"] == "always"
 
 
 def test_health_reports_bm25_floor_in_cloud_mode(pois, monkeypatch):
@@ -427,11 +465,13 @@ def test_llm_parse_env_openai_skips_bedrock_probes(pois, monkeypatch):
 
 def test_warn_once_message_reflects_how_llm_was_enabled(pois, monkeypatch, caplog):
     """A cloud operator who never set SEMSEARCH_LLM_PARSE must not be told about it: the
-    warn-once message names the actual enabler (cloud-mode default vs the env value)."""
+    warn-once message names the actual enabler (cloud-mode default vs the env value). The
+    query is DEGRADED ('quan cafe' — no diacritics) so the degradation gate lets the (failing,
+    offline) LLM call through to exercise the warn-once path; a clean query would be gated off."""
     _broken_sentence_transformers(monkeypatch, "must not load")
     with caplog.at_level("WARNING"):
         pipe = P.FullPipeline(pois, mode="cloud")  # LLM on via mode default; offline -> None
-        pipe.resolve_intent("cà phê")
+        pipe.resolve_intent("quan cafe")
     warned = [r.getMessage() for r in caplog.records if "rule-parsed" in r.getMessage()]
     assert warned and "cloud" in warned[0] and "SEMSEARCH_LLM_PARSE" not in warned[0]
 
@@ -440,7 +480,7 @@ def test_warn_once_message_reflects_how_llm_was_enabled(pois, monkeypatch, caplo
     monkeypatch.setattr(P, "get_embedder", lambda provider="local": UnitLocal())
     with caplog.at_level("WARNING"):
         pipe = P.FullPipeline(pois, mode="local")
-        pipe.resolve_intent("cà phê")
+        pipe.resolve_intent("quan cafe")
     warned = [r.getMessage() for r in caplog.records if "rule-parsed" in r.getMessage()]
     assert warned and "SEMSEARCH_LLM_PARSE=bedrock" in warned[0]
 

@@ -132,11 +132,33 @@ subsets must be visible, not hidden inside the headline number.
   `canonicalize(token, vocab, max_edit) -> str | None`; the attribute/category/gazetteer matchers
   are thin callers passing their own vocab and **per-vocab** edit threshold. Do not build three
   divergent copies.
-- Typo canonicalizer (PRD FR-3): after folding + abbreviation expansion, query tokens
-  (len ≥ 4) that match no vocabulary entry are fuzzy-matched with edit distance ≤ 1 against
-  the closed vocabularies (category keywords, attribute taxonomy, gazetteer names) and
-  replaced by the canonical form ("yen tihn" → "yen tinh"). Query side only — documents
-  are clean. **Guard precision:** a big merged vocab means a valid 4+char word can sit within
+- Typo canonicalizer (PRD FR-3, implemented in `normalize.canonicalize` + `parse.Parser`):
+  after folding + abbreviation expansion, query tokens (len ≥ 4) that match no vocabulary
+  entry are fuzzy-matched against the closed vocabularies (category keywords, attribute
+  taxonomy, gazetteer names) and replaced by the canonical form ("yen tihn" → "yen tinh").
+  Query side only — documents are clean.
+  **Edit distance ≤ 1 means optimal-string-alignment (Damerau) distance, not plain
+  Levenshtein** — a single adjacent-character transposition counts as one edit alongside
+  substitution/insertion/deletion. This is a root-cause fix, not a cosmetic one: the FR-3
+  canonical example "yen tihn" → "yen tinh" is exactly a transposition (`t-i-h-n` →
+  `t-i-n-h`); plain Levenshtein scores that at distance 2, so it provably cannot correct it
+  at `max_edit=1`.
+  **Two-tier tie-break:** when a token sits within one edit of several vocab terms, a
+  transposition candidate is preferred over a substitution/indel candidate (same letters in
+  the wrong order is a higher-confidence typo signal than a changed letter) — a *unique*
+  transposition match wins even when substitution neighbours also exist (`tihn` → `tinh`
+  beats the substitution neighbour `tien`). Same-type collisions still refuse: two
+  transposition candidates, or two substitution candidates, leave the token uncorrected
+  (`banh` → {`binh`, `benh`, `hanh`} stays as typed).
+  **Two-vocabulary design:** corrections only ever land on the closed TARGET vocabularies —
+  category keywords, attribute taxonomy, and gazetteer names/districts/cities (~127 folded
+  tokens) — while a much broader KNOWN set decides what even counts as out-of-vocabulary in
+  the first place: TARGET plus every POI-name token, the stopword list, and the ~582
+  vendored Vietnamese common words (~782 folded tokens total). A token already in KNOWN is
+  never a correction candidate, so a distinctive subject word that happens to sit one edit
+  from a vocab term (a real POI-name token, a common Vietnamese word) is never hijacked into
+  an unrelated meaning — only genuinely out-of-vocabulary tokens are corrected, and only onto
+  TARGET. **Guard precision:** a big merged vocab means a valid 4+char word can sit within
   edit-distance 1 of an unrelated canonical term and be silently "corrected" into the wrong
   meaning, changing retrieval before it ever runs. Test: a set of known near-collisions must
   **not** be rewritten.
@@ -162,6 +184,36 @@ distinct cached vectors.
 
 - `BM25Index.search(text)` over folded tokens; `DenseIndex.search(text)` cosine over the matrix —
   both score the **full 111-doc corpus** (no top-k cut).
+- **BM25 document composition (`retrieve.lexical_doc`), previously unspecified.** A flat,
+  folded-token document per POI concatenates `name / brand / category / sub_category /
+  district / city / address / attributes / tags / description`, each field contributing its
+  text a fixed number of times — BM25F-lite via token repetition (`rank_bm25` reads the
+  repeats as raised term frequency; no custom BM25F scorer, no new dependency). **Field
+  weights: `attributes` ×2, every other field ×1.** The ablation OVERTURNED the intuitive
+  "boost identity fields" hypothesis: boosting `name`/`brand` ×3 REGRESSED official-tune
+  NDCG@5 (0.9592 → 0.942) via proper-name token collisions (a POI whose *name* happens to
+  match outranks the gold POI on category/attribute intent) — the full pipeline already
+  resolves identity via dense retrieval + subject corroboration (below), so lexical headroom
+  lives in the INTENT fields, not identity. Boosting `category` carried its own collision
+  regression (masked in the aggregate number, visible per-query); a lone `tags` boost hurt
+  the synth150 set (§6). `attributes ×2` was the only variant that improved monotonically
+  across all three measured corpora: tune@111 NDCG@5 +0.0016 (zero per-query regressions),
+  tune@1000 NDCG@5 +0.0213, synth150 NDCG@5 +0.0024 — the principled choice, since
+  attributes are the sponsor's controlled 10-term taxonomy rather than free-text
+  description/address. `district`/`city` are pinned at weight 1, never 0: dropping them (to
+  stop the "trà" ~ "Sơn Trà" fold collision) regressed tune NDCG@5 0.959 → 0.948 — location
+  overlap is a genuine lexical signal, and the drink/café fold-collision fix is instead
+  carried entirely by the parser's `CATEGORY_KEYWORDS` curation (§7) plus the category
+  signal, not by starving the lexical location field.
+- **BM25-side OOV canonicalization (`BM25Index._canonicalize_oov`).** Independent of the
+  parser's typo corrector (§3, which targets the closed category/attribute/gazetteer
+  vocabulary), the BM25 index snaps out-of-vocabulary query tokens (folded, len ≥ 4, absent
+  from the index's own term lexicon) onto their unique edit-1 lexicon neighbour before
+  scoring — the same `canonicalize()` primitive, applied against the index's own document
+  vocabulary instead of the closed vocab. Ambiguous tokens (multiple equidistant
+  neighbours) are left untouched; a fully in-vocabulary, clean query is scored
+  byte-identically to having no canonicalization step at all. Runs after abbreviation
+  expansion and before the district-drop de-pollution.
 - `rrf_fuse(runs, c=60)`: standard reciprocal-rank fusion, producing a fused **relevance score for
   every POI** — used to compute the `semantic` ranking signal, **not** as a candidate gate.
 - **Re-rank over hybrid, no destructive filtering (OV1 + G3-review).** Hybrid RRF relevance is
@@ -221,6 +273,17 @@ per-category n** (Hard n≈8), so the headline is "0.80 ±ε, Hard n=8", not a b
 G3's 0.80/0.75 is an **internal target, not a sacred gate** — take a quick BM25+dense sanity read
 on the tune split before treating it as pass/fail, and never let it block UI start (see RUNBOOK).
 
+**Extended tuning pool (`scripts/tune.py --pool official|extended`, default `official`,
+landing alongside the Tier-1 changes above).** `official` is exactly the protocol above —
+coordinate ascent scored on the 40-query official tune split only. `extended` additionally
+folds in the 150-query synthetic eval set (`data/synth/eval_synth.json`, ground truth by
+construction, evaluated against the 1000-POI synthetic stress corpus,
+`data/synth/synth_dataset.xlsx` = the official 111 rows verbatim + 889 seeded distractors),
+and the objective becomes mean NDCG@5 over the combined 190 tune+synth pairs — a larger,
+more diverse sample for the coordinate ascent without touching held-out data. **This does
+not relax NFR-6/7:** neither pool option ever reads the official 20-query test split, which
+remains the sole source `run_eval.py --split test` (G3) reports from.
+
 ## 7. Query parsing (`parse.py`)
 
 1. **Rule parser (always runs):** folded-text regex + gazetteer. Category keywords, district/city
@@ -243,11 +306,34 @@ on the tune split before treating it as pass/fail, and never let it block UI sta
    folded text after abbreviation expansion; a new-name hit sets the anchor to the alias coords
    and canonicalizes `district`/`city` to the dataset's (old) naming, so downstream filters
    (§5) and outputs are untouched. Old names are dataset-native and pass through unchanged.
-2. **LLM parser (Bedrock Claude, structured output):** same QueryIntent JSON; prompt includes
-   taxonomy vocab + category list so outputs are closed-vocabulary. 800ms budget → on timeout or
-   schema failure, keep rule result. Merge policy: LLM fills fields the rules left null; rules win
-   on gazetteer-verified anchors.
-3. Cache parses by normalized query (dict + sqlite).
+2. **LLM parser (Bedrock Claude, OpenAI fallback, structured output — `llm_parse.py`):** same
+   QueryIntent JSON; prompt includes taxonomy vocab + category list so outputs are
+   closed-vocabulary. **Timeout: ~2s connect / 3s read, no retries** (`_CLAUDE_TIMEOUT`,
+   same discipline on the OpenAI fallback client) — the original "800ms budget" here and in
+   PRD FR-4 was aspirational and never matched the shipped client config; corrected to the
+   actual value. On timeout, network failure, or schema failure, keep the rule result (the
+   demo never stalls on the network — CLAUDE.md hard rule). Merge policy (`merge_intent`):
+   LLM fills fields the rules left null (category/attributes/price_pref/open_after only);
+   rules win on gazetteer-verified anchors — location (city/district/anchor) is entirely
+   rule-owned and never read from the LLM output, since a hallucinated location would
+   destructively collapse recall through the hard location filter (§5).
+   **Degradation gate (`SEMSEARCH_LLM_GATE=auto|always`, `config.DEFAULT_LLM_GATE="auto"`):**
+   in `auto` (default), the LLM is invoked only when the query shows a degradation signal —
+   no Vietnamese diacritic anywhere in the text, OR at least one folded token ≥4 chars absent
+   from the BM25 lexicon — a deterministic, pure function of the query text alone (no clock,
+   no network; NFR-5-safe by construction). A clean, fully in-vocabulary query skips the
+   ~1.7s call entirely and is byte-identical to the LLM-off path (no correction, no cache
+   entry). Measured on the official tune set: clean queries gain nothing from the LLM (rules
+   0.959 vs LLM 0.950 NDCG@5), while the whole measured win — up to +0.22 NDCG@5 at 1000
+   POIs — sits on degraded queries (stripped diacritics, typos, mixed language). `always`
+   forces the call on every query (useful when demoing the correction on an already-clean
+   query). **Known limitation:** a query that carries Vietnamese diacritics AND mixes in
+   common English words that already sit in the BM25 lexicon (e.g. an English word present
+   in POI tags) is gated OFF even though it is genuinely mixed-language — the gate has no
+   signal to catch that case short of an always-on LLM call.
+3. Cache parses on disk, keyed by (prompt version, provider, model id, raw query) — a JSON
+   file per parse under the embedding-cache root (`LLMCACHE_DIR`), not sqlite; only
+   successful (non-None) validated parses are cached, so a transient outage self-heals.
 
 ## 8. Explanations (`explain.py`)
 

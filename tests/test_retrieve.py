@@ -13,7 +13,9 @@ import pytest
 
 from semsearch import embeddings as E
 from semsearch import retrieve as R
-from semsearch.retrieve import DenseIndex, rrf_fuse
+from semsearch.data import POI
+from semsearch.normalize import expand_query
+from semsearch.retrieve import BM25Index, DenseIndex, FIELD_WEIGHTS, rrf_fuse
 
 
 def test_rrf_fuse_orders_by_reciprocal_rank():
@@ -225,3 +227,119 @@ def test_dense_index_rebuilds_on_manifest_mismatch_instead_of_crashing(tmp_path,
     idx = DenseIndex(pois, emb)  # must rebuild, not crash
     assert idx.poi_ids == ["C001", "C002"]
     assert idx.matrix.shape == (2, emb.dim)
+
+
+# --------------------------------------------------------------------------- #
+# BM25F-lite field weighting + OOV typo canonicalization (T1b).               #
+#                                                                             #
+# Field weights are applied by REPEATING a field's text in the flat doc, so   #
+# rank_bm25 reads the repeats as raised term frequency. NB: BM25Okapi IDF     #
+# goes NEGATIVE when a term sits in > half the corpus, which would INVERT the  #
+# weighting — so these fixtures add filler POIs to keep the probe term rare    #
+# (small df, large N -> positive IDF), exactly as in the real 111/1000 corpus.#
+# --------------------------------------------------------------------------- #
+def _poi(pid: str, *, name: str = "Place", brand: str | None = None,
+         category: str = "Cafe", sub_category: str | None = None,
+         district: str = "Quận 1", city: str = "TP.HCM", address: str = "1 Le Loi",
+         attributes: list[str] | None = None, tags: list[str] | None = None,
+         description: str = "") -> POI:
+    """Minimal POI double for BM25 tests — only the lexical_doc fields matter."""
+    return POI(
+        poi_id=pid, name=name, brand=brand, category=category, sub_category=sub_category,
+        city=city, district=district, address=address, lat=10.0, lon=106.0, rating=4.0,
+        review_count=10, popularity=0.5, price_level=2, opening_hours="08:00-22:00",
+        attributes=attributes or [], tags=tags or [], description=description,
+    )
+
+
+def _fillers(n: int = 8) -> list[POI]:
+    """Distinct-token POIs so a probe term stays rare (positive IDF)."""
+    return [_poi(f"F{i}", name=f"filler{i}", attributes=[f"attr{i}"]) for i in range(n)]
+
+
+def test_field_weighting_boosts_attributes_over_description():
+    """The chosen T1b weighting (attributes x2) ranks a rare term found in a POI's
+    attributes ABOVE the same term found only in another POI's free-text description
+    (x1). This is the field-weight upgrade: TF is raised by repeating the field's text."""
+    assert FIELD_WEIGHTS["attributes"] > FIELD_WEIGHTS["description"]
+    in_attr = _poi("A", attributes=["zorblat"])   # rare probe term in the x2 field
+    in_desc = _poi("B", description="zorblat")     # same term in the x1 field
+    idx = BM25Index(_fillers() + [in_attr, in_desc])
+    ranked = idx.rank_ids("zorblat")
+    assert ranked[0] == "A"  # higher TF from the x2 field wins (both matched, A first)
+    assert dict(idx.search("zorblat"))["A"] > dict(idx.search("zorblat"))["B"]
+
+
+def test_field_weighting_all_ones_reproduces_flat_doc(monkeypatch):
+    """All-1s FIELD_WEIGHTS is token-for-token the historical flat concat: a term in
+    attributes then ties the same term in description (no field advantage)."""
+    monkeypatch.setattr(R, "FIELD_WEIGHTS", {k: 1 for k in R.FIELD_WEIGHTS})
+    pois = _fillers() + [_poi("A", attributes=["zorblat"]), _poi("B", description="zorblat")]
+    idx = BM25Index(pois)
+    scores = dict(idx.search("zorblat"))
+    assert scores["A"] == scores["B"]  # identical doc length + TF -> identical score
+
+
+def test_district_token_still_retrievable_trap_case():
+    """The 'trà' ~ 'Sơn Trà' fold-collision guard: district stays at weight 1 (NEVER 0),
+    so a district query still retrieves its POIs. Dropping district previously regressed
+    tune NDCG@5 0.959 -> 0.948 (see lexical_doc)."""
+    assert FIELD_WEIGHTS["district"] >= 1 and FIELD_WEIGHTS["city"] >= 1
+    son_tra = _poi("ST", name="Cà Phê X", district="Sơn Trà", city="Đà Nẵng")
+    other = _poi("OT", name="Cà Phê Y", district="Hải Châu", city="Đà Nẵng")
+    idx = BM25Index(_fillers() + [son_tra, other])
+    assert idx.rank_ids("Sơn Trà")[0] == "ST"
+
+
+def test_oov_typo_retrieves_gold_poi():
+    """A typo'd query token is snapped onto its unique edit-1 lexicon neighbour before
+    scoring, so 'wjfi' (edit-1 from 'wifi', which is an ATTRIBUTE token -> part of the
+    doc) retrieves the wifi POI. Gives typo'd queries lexical recall with no LLM."""
+    wifi_poi = _poi("W", attributes=["wifi"])
+    other = _poi("O", attributes=["outdoor"])
+    idx = BM25Index(_fillers() + [wifi_poi, other])
+    assert idx._canonicalize_oov(["wjfi"]) == ["wifi"]  # unique edit-1 rewrite
+    assert idx.rank_ids("wjfi")[0] == "W"
+
+
+def test_oov_ambiguous_typo_not_rewritten():
+    """Precision guard: a token within edit-1 of TWO lexicon terms is AMBIGUOUS, so
+    canonicalize refuses and the token is left untouched (matches nothing) rather than
+    risk mis-mapping. 'bind' is edit-1 from both 'band' and 'bond'."""
+    a = _poi("A", attributes=["band"])
+    b = _poi("B", attributes=["bond"])
+    idx = BM25Index(_fillers() + [a, b])
+    assert {"band", "bond"} <= idx.lexicon and "bind" not in idx.lexicon
+    assert idx._canonicalize_oov(["bind"]) == ["bind"]  # ambiguous -> unchanged
+
+
+def test_oov_short_token_untouched():
+    """Tokens shorter than the min length are never fuzzy-matched, even when edit-1 from
+    a lexicon term — 'wif' (len 3) is a deletion away from 'wifi' but too short."""
+    idx = BM25Index(_fillers() + [_poi("W", attributes=["wifi"])])
+    assert "wif" not in idx.lexicon
+    assert idx._canonicalize_oov(["wif"]) == ["wif"]
+
+
+def test_oov_clean_query_scores_byte_identical_to_no_canonicalization():
+    """No behavior change when every query token is in-vocab: search() returns exactly
+    what scoring the expanded tokens directly (the pre-canonicalization path) returns —
+    canonicalization is a strict no-op for clean queries."""
+    pois = _fillers() + [_poi("A", attributes=["wifi"], name="Cà Phê Yên Tĩnh"),
+                         _poi("B", attributes=["outdoor"], name="Quán Trà")]
+    idx = BM25Index(pois)
+    q = "cà phê wifi"
+    tokens = expand_query(q)
+    assert all(t in idx.lexicon for t in tokens)  # precondition: fully in-vocab
+    scores = idx.bm25.get_scores(tokens)  # the exact pre-canonicalization scoring path
+    order = sorted(range(len(idx.poi_ids)), key=lambda i: scores[i], reverse=True)
+    reference = [(idx.poi_ids[i], float(scores[i])) for i in order]
+    assert idx.search(q) == reference  # byte-identical (poi_id, score) tuples
+
+
+# Latency note (T1b, measured, not asserted — a timed assertion is flaky in CI):
+# lexicon = 470 tokens (official 111-POI corpus) / 845 tokens (synth 1000-POI corpus).
+# Mean BM25 search latency on typo'd queries (7 distinct typos x 200 reps): 0.079 ms
+# (official) / 0.291 ms (synth 1000) — both far under the 5 ms budget. canonicalize's
+# per-term edit-1 scan early-outs on the |len(a)-len(b)|>1 length gap, so no length-
+# bucket prefilter was needed.

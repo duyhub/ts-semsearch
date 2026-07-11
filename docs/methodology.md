@@ -23,6 +23,38 @@ Recall@5 0.954→0.879), so filtering never *precedes* ranking. Because the
 hybrid, so the tuned re-ranker is `full ≥ hybrid` by construction (ablation
 confirms it).
 
+**BM25 document composition.** BM25 scores a flat, folded-token document per POI
+(name/brand/category/sub_category/district/city/address/attributes/tags/description),
+with the `attributes` field weighted ×2 (token repetition — no custom BM25F
+scorer). The finding behind that choice cuts against intuition and is reported
+honestly: boosting *identity* fields (name/brand) instead **regressed** tune
+NDCG@5, via proper-name token collisions — identity is already resolved by dense
+retrieval + subject corroboration, so the lexical headroom sits in *intent*
+fields. `attributes` — the sponsor's controlled 10-term taxonomy — was the one
+variant that improved monotonically across the official tune set, a 1000-POI
+stress corpus, and a 150-query synthetic eval set (see "Stress-testing corpus"
+below). Out-of-vocabulary query tokens are also canonicalized on the BM25 side,
+independent of the parser's own typo corrector: a ≥4-char token absent from the
+index's own lexicon snaps to its unique edit-1 neighbour before scoring;
+ambiguous tokens and clean, fully in-vocabulary queries are left untouched.
+
+## Typo tolerance
+
+The rule parser's typo corrector runs unconditionally, in every deployment mode
+(local and cloud alike — it needs no network). It matches out-of-vocabulary query
+tokens against the closed category/attribute/gazetteer vocabulary using
+**optimal-string-alignment (Damerau) edit distance ≤ 1**, not plain Levenshtein —
+a single adjacent-character transposition (e.g. "tihn" → "tinh") counts as one
+edit, which plain Levenshtein distance (2, for that pair) cannot correct. A
+two-tier tie-break prefers a unique transposition match over a substitution match
+when both exist; same-type collisions still refuse rather than guess. Corrections
+only ever land on the ~127-token closed vocabulary (category keywords, attribute
+taxonomy, gazetteer names); a much broader ~782-token "known" set (POI-name
+tokens, stopwords, vendored Vietnamese common words) defines what counts as
+out-of-vocabulary in the first place, so a real subject word is never hijacked
+into an unrelated vocabulary term. Entirely local and deterministic — no LLM
+involved.
+
 **Hard constraints (post-rank, relaxing).** When a query *explicitly* names a
 constraint, results must honor it: a pure category ("cà phê") returns only that
 category, a pure location ("quận 1") only that district, a distinctive subject
@@ -104,6 +136,23 @@ full re-rank **0.959** (NDCG@5) — each stage adds value.
   95% CI [0.907–1.000]) and per-cell n rather than a bare headline. Small per-cell
   categories (n≤2) are anecdotal and flagged as such in `reports/metrics.md`.
 
+## Stress-testing corpus
+
+Two additional artifacts pressure-test the engine beyond the official 111-POI /
+60-query set: a **1000-POI synthetic stress corpus**
+(`data/synth/synth_dataset.xlsx` = the official 111 rows verbatim + 889 seeded
+distractors following the official data's own distributions — geography,
+category mix, attributes, hours) and a **150-query synthetic eval set**
+(`data/synth/eval_synth.json`, ground truth by construction, not fitted to the
+official queries). `scripts/tune.py --pool extended` optionally folds both into
+weight tuning (mean NDCG@5 over the combined 190 tune+synth pairs) alongside the
+default `--pool official`; either way the official 20-query test split is never
+read by tuning and remains the sole G3 source (NFR-6). Headline number at this
+larger scale, pre-Tier-1: rules-arm typo-correction NDCG@5 0.510. The Tier-1
+typo/BM25/LLM-gate changes documented above land in this same session; re-run
+the stress-corpus eval and see `reports/` for the current post-change figure —
+not restated here to avoid hand-writing a number a script should generate.
+
 ## Models & provider posture
 
 Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary provider: the build,
@@ -130,6 +179,16 @@ and subject corroboration; the API `query` echo stays the original text and the 
 surfaced additively as `meta.correctedQuery`. Because it rides the LLM parse, it is off in
 every measured path (all of which pin `mode='local'`, LLM parse off), so it too cannot reach a
 reported metric. Switch: `SEMSEARCH_QUERY_REWRITE` / `DEFAULT_QUERY_REWRITE` (on by default).
+
+**LLM invocation gate (`SEMSEARCH_LLM_GATE`).** Even when the LLM parse is on, the default
+`auto` gate skips the ~1.7s call for a clean, fully in-vocabulary query — no Vietnamese
+diacritic missing, no out-of-vocabulary token — since that case measurably gains nothing
+(rules 0.959 vs LLM 0.950 NDCG@5 on the official tune set) while the correction's real value
+(up to +0.22 NDCG@5 at 1000 POIs) concentrates on degraded queries: stripped diacritics,
+typos, mixed language. `always` forces the call on every query, useful when demoing the
+correction on an already-clean query. Known gap: a query that carries Vietnamese diacritics
+AND mixes in common English words already present in the BM25 lexicon (e.g. from POI tags)
+is gated off even though it is genuinely mixed-language.
 
 **Amazon Bedrock is implemented as a selectable provider** — never the default, never
 required to run:

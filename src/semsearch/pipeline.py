@@ -16,11 +16,12 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import unicodedata
 from dataclasses import replace
 from datetime import datetime
 from typing import Sequence
 
-from .config import VALID_MODES, resolve_mode, resolve_query_rewrite
+from .config import VALID_MODES, resolve_llm_gate, resolve_mode, resolve_query_rewrite
 from .data import POI, QueryIntent, RankedResult, content_tokens
 from .embeddings import (
     BEDROCK_PROVIDERS,
@@ -31,7 +32,7 @@ from .embeddings import (
 from .explain import generate_reasons
 from .geo import Gazetteer, haversine
 from .llm_parse import LLMParser, merge_intent
-from .normalize import fold
+from .normalize import doc_tokens, fold
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ LLM_PARSE_ENV = "SEMSEARCH_LLM_PARSE"
 ANCHOR_RADII_KM = (30.0, 150.0)  # try tight metro radius, then wider; else no gate
 from .parse import Parser
 from .rank import DEFAULT_EVAL_NOW, DEFAULT_WEIGHTS, LinearRanker
-from .retrieve import BM25Index, DenseIndex, rrf_fuse
+from .retrieve import BM25Index, DenseIndex, lexical_doc, rrf_fuse
 
 RRF_C = 60  # the fused-score calibration max is derived per query from the lists actually
 # fused: k non-empty lists -> max k/(RRF_C+1) (rank 1 in each). A fixed 2/(c+1) would
@@ -63,6 +64,16 @@ RRF_C = 60  # the fused-score calibration max is derived per query from the list
 # on eval: genuine subjects sit at dense rank 1 vs spurious 45+, so any K in [5,30] is
 # equivalent. See docs/superpowers/specs/2026-07-10-subject-filter-corroboration-design.md.
 DENSE_SUBJECT_TOPK = 10
+
+
+def _has_diacritics(text: str) -> bool:
+    """True iff `text` carries any Vietnamese diacritic — an đ/Đ (folds to plain 'd' but IS a
+    diacritic-bearing letter) or any combining mark left after NFD decomposition. A query with
+    NONE is likely diacritic-stripped typing, which the LLM's restoration helps most. Pure
+    function of the text (no clock, no network) => deterministic (NFR-5)."""
+    if "đ" in text or "Đ" in text:
+        return True
+    return any(unicodedata.category(ch) == "Mn" for ch in unicodedata.normalize("NFD", text))
 
 
 def _attrs_folded(p: POI) -> set[str]:
@@ -114,6 +125,14 @@ class FullPipeline:
         else:
             self.dense = self._dense_for_mode(self.mode)
         self.bm25 = BM25Index(self.pois)
+        # LLM-gate lexicon (NFR-5): the folded token SET the BM25 index carries. An out-of-vocab
+        # long query token signals a typo / foreign word the LLM restoration helps with. Reuse
+        # the index's own lexicon when present, else derive the SAME set from the SAME docs the
+        # index consumes — so the gate stays decoupled from BM25 internals and merge order.
+        self._lexicon: frozenset[str] = frozenset(
+            getattr(self.bm25, "lexicon", None)
+            or (tok for p in self.pois for tok in doc_tokens(lexical_doc(p)))
+        )
         self.gazetteer = Gazetteer(self.pois)
         self.parser = Parser(self.pois, self.gazetteer)
         C = sum(p.rating for p in self.pois) / len(self.pois)
@@ -150,6 +169,9 @@ class FullPipeline:
         # FR-4: when on, the LLM's corrected_query REPLACES the raw text for retrieval. It rides
         # the LLM parse (no extra call), so it is inert whenever the parse is off/unavailable.
         self._query_rewrite = resolve_query_rewrite()
+        # Latency gate: "auto" fires the LLM ONLY for degraded queries (see _needs_llm); "always"
+        # keeps the every-query behavior. Resolved once here; inert when the parse is off.
+        self._llm_gate = resolve_llm_gate()
 
     def _dense_for_mode(self, mode: str) -> DenseIndex | None:
         """Construction-time embeddings resolution per deployment mode — chosen ONCE,
@@ -224,14 +246,31 @@ class FullPipeline:
         rrf_max = max(1, sum(1 for l in lists if l)) / (RRF_C + 1)
         return {pid: min(1.0, score / rrf_max) for pid, score in fused}
 
+    def _needs_llm(self, query_text: str) -> bool:
+        """Deterministic degradation gate (NFR-5): True when `query_text` shows a signal the
+        LLM's restoration measurably helps — so a clean, in-vocab query can SKIP the ~1.7s call
+        and stay byte-identical to the LLM-off path. Pure function of the query text and the
+        pipeline's static lexicon (no clock, no network), so the same query always decides the
+        same way. Fires when EITHER:
+          1. the query carries NO Vietnamese diacritic at all (likely diacritic-stripped
+             typing — restoration is worth up to +0.15 NDCG at 1000 POIs), or
+          2. any folded token of length >= 4 is out-of-vocab against the BM25 lexicon (a typo,
+             or an English / mixed-language word the dictionary parse cannot place)."""
+        if not _has_diacritics(query_text):
+            return True
+        return any(len(tok) >= 4 and tok not in self._lexicon
+                   for tok in doc_tokens(query_text))
+
     def resolve_intent(self, query_text: str) -> QueryIntent:
         """The ONE intent resolution for a query — public because the API layer must use
         the SAME intent object for ranking, the intent echo, and reasons[] (a rule-only
-        re-parse there would contradict LLM-merged results). When the LLM gate is off
-        (default) this is byte-identical to `self.parser.parse` — the gate short-circuits
-        before any new code runs. When SEMSEARCH_LLM_PARSE=bedrock, ONE Claude parse runs on
-        the RAW text; on ANY failure (network, creds, bad JSON) the rule intent is used alone,
-        with a single warning logged once (lock: uvicorn serves on a threadpool).
+        re-parse there would contradict LLM-merged results). When the LLM parse is off
+        (local modes) this is byte-identical to `self.parser.parse`. When the parse is ON, the
+        degradation gate (SEMSEARCH_LLM_GATE=auto, the default) STILL skips the call for a clean,
+        in-vocab query — that path is byte-identical to the LLM-off parse too (no call, no cache
+        entry, corrected_query None); `always` forces the call for every query. A gated-IN query
+        runs ONE Claude parse on the RAW text; on ANY failure (network, creds, bad JSON) the rule
+        intent is used alone, with a single warning logged once (lock: uvicorn serves threaded).
 
         Query rewrite (FR-4): with the parse on AND `resolve_query_rewrite()` True, the parse's
         `corrected_query` (typos fixed, diacritics restored) REPLACES the raw text for the rule
@@ -239,6 +278,10 @@ class FullPipeline:
         the ORIGINAL text — the API echo must never show the rewrite. The LLM fires at most
         once per query regardless."""
         if self._llm_parser is None:
+            return self.parser.parse(query_text)
+        if self._llm_gate != "always" and not self._needs_llm(query_text):
+            # Degradation gate (auto): a clean, in-vocab query skips the LLM entirely — no call,
+            # no cache entry, corrected_query None — byte-identical to the LLM-off path.
             return self.parser.parse(query_text)
         llm_out = None
         try:

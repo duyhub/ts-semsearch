@@ -300,6 +300,8 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             # LLM parse gate is on (the correction rides that parse).
             "query_rewrite": "on" if (pipeline._query_rewrite
                                       and pipeline._llm_parser is not None) else "off",
+            # LLM latency gate: 'auto' (fire only for degraded queries) or 'always' (every query).
+            "llm_gate": pipeline._llm_gate,
         }
 
     @app.get("/v1/search", response_model=SearchResponse)

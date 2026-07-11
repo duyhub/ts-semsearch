@@ -5,6 +5,7 @@ import pytest
 
 from semsearch.data import load_pois
 from semsearch.geo import Gazetteer
+from semsearch.normalize import canonicalize
 from semsearch.parse import Parser
 
 
@@ -191,3 +192,86 @@ def test_coordinate_takes_precedence_over_gazetteer(parser):
     intent = parser.parse("cafe gần hồ gươm 10.7738, 106.704")
     assert intent.anchor is not None
     assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+
+
+# --- Typo correction wired into the rule parser (PRD FR-3; SPEC §3) ---
+# OOV query tokens (len >= 4, not a recognized word) are fuzzy-matched (edit
+# distance <= 1, incl. adjacent transposition) to the closed category/attribute/
+# location vocabularies and rewritten to the canonical form FOR MATCHING ONLY.
+
+def test_typo_attribute_fr3_acceptance(parser):
+    # PRD FR-3 acceptance example: 'yen tihn' (transposed 'yen tinh') still parses
+    # to the yên tĩnh attribute. Correction fires on the OOV token 'tihn' -> 'tinh'.
+    intent = parser.parse("cafe yen tihn")
+    assert intent.category == "Quán cà phê"
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_typo_wifi_substitution(parser):
+    # 'wjfi' (edit-1 substitution of 'wifi') resolves to the wifi attribute.
+    intent = parser.parse("quan cafe yen tinh co wjfi")
+    assert "wifi" in intent.required_attrs
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_typo_category_token(parser):
+    # 'hnag' (transposed 'hang') -> nhà hàng category.
+    intent = parser.parse("nha hnag ngon")
+    assert intent.category == "Nhà hàng"
+
+
+def test_typo_district_token(parser):
+    # 'kiam' (edit-1 of 'kiem') -> Hoàn Kiếm district + anchor.
+    intent = parser.parse("quan ca phe hoan kiam")
+    assert intent.category == "Quán cà phê"
+    assert intent.district is not None and "Kiếm" in intent.district
+    assert intent.anchor is not None
+
+
+def test_typo_correction_preserves_raw_and_normalized_echo(parser):
+    # The correction is internal to matching: raw + normalized echo the ORIGINAL
+    # (typo'd) tokens; only the match haystack sees the canonical form.
+    intent = parser.parse("cafe yen tihn")
+    assert intent.raw == "cafe yen tihn"
+    assert "tihn" in intent.normalized and "tinh" not in intent.normalized
+
+
+def test_typo_corrected_token_not_left_in_residual(parser):
+    # A corrected-and-consumed typo must not leak its ORIGINAL form into the
+    # residual: 'yen tihn' is fully explained (attribute), so no residual remains.
+    intent = parser.parse("cafe yen tihn")
+    assert not intent.has_residual
+    assert "tihn" not in intent.residual_terms
+    assert intent.content_terms == []
+
+
+def test_near_collision_not_corrected(parser):
+    # Guard: 'banh' (bánh) is edit-1 from THREE vocab tokens (binh/benh/hanh) via
+    # substitution -> genuinely ambiguous -> refused. It must never be rewritten.
+    assert canonicalize("banh", parser._correct_target) is None
+
+
+def test_short_typo_token_never_corrected(parser):
+    # Guard: tokens < 4 chars are never fuzzy-corrected (they collide too easily).
+    assert canonicalize("wif", parser._correct_target) is None
+
+
+def test_distinctive_subject_not_hijacked_by_correction(parser):
+    # design point 3: a recognized distinctive subject token ('bạch', a POI-name
+    # token df=1) is edit-1 from the attribute key 'beach' (gần biển) — but it is a
+    # KNOWN word, so it is NEVER corrected. It flows to content_terms; no spurious
+    # gần biển attribute is injected.
+    intent = parser.parse("quán bạch đằng")
+    assert "bach" in intent.content_terms
+    assert "gần biển" not in intent.required_attrs
+
+
+def test_clean_query_unaffected_by_correction(parser):
+    # Regression: a clean, fully-diacritic query parses exactly as before — no OOV
+    # token, so the correction map is empty and matching is byte-identical.
+    intent = parser.parse("quán cà phê yên tĩnh")
+    assert intent.category == "Quán cà phê"
+    assert intent.required_attrs == ["yên tĩnh"]
+    assert intent.content_terms == []
+    assert not intent.has_residual
+    assert intent.normalized == "quan ca phe yen tinh"

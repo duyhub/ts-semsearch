@@ -14,29 +14,64 @@ from rank_bm25 import BM25Okapi
 
 from .data import POI
 from .embeddings import Embedder, build_doc_matrix, embed_query, get_embedder, load_doc_matrix
-from .normalize import doc_tokens, expand_query
+from .normalize import canonicalize, doc_tokens, expand_query
+
+# BM25F-lite field weights (T1b ablation). A field contributes its text N times in the
+# flat doc; rank_bm25 reads the repeats as raised term frequency — no new dependency, no
+# custom BM25F scorer. All-1s reproduces the historical flat concat token-for-token.
+#
+# CHOSEN: attributes x2, everything else x1. The ablation OVERTURNED the intuitive
+# "boost identity fields" hypothesis: boosting name/brand REGRESSED official tune NDCG@5
+# (0.9592 -> 0.942, driven by proper-name token collisions — e.g. P009 "cây xăng ... hạ
+# long" where a name-matching POI outranks the gold gas station). The full pipeline already
+# resolves identity via dense + subject-corroboration, so the lexical headroom is in the
+# INTENT fields, not identity. Among intent fields, category boosting carried its own
+# collision regression (P009 -0.044, only masked in aggregate) and a lone tags boost hurt
+# synth150; attributes x2 was the one variant that improved MONOTONICALLY — tune@111 0.9608
+# (+0.0016, zero per-query regressions), tune@1000 NDCG +0.0213, synth150 NDCG +0.0024.
+# Attributes are the sponsor's controlled constraint taxonomy (10 canonical need-terms), so
+# boosting them over free-text description/address is the principled, lowest-risk upgrade.
+#
+# district/city are pinned at 1 (NEVER 0): dropping them to stop the 'trà' ~ 'Sơn Trà'
+# fold-collision previously regressed tune NDCG@5 0.959 -> 0.948 (location overlap genuinely
+# helps the eval). The 'trà sữa' -> café fix is carried purely by the parser drink-category
+# curation (CATEGORY_KEYWORDS), honored by the category hard-filter — not by starving the
+# lexical location signal.
+FIELD_WEIGHTS: dict[str, int] = {
+    "name": 1, "brand": 1, "category": 1, "sub_category": 1,
+    "tags": 1, "attributes": 2, "district": 1, "city": 1,
+    "address": 1, "description": 1,
+}
+
+# Query tokens shorter than this are never fuzzy-canonicalized against the lexicon
+# (mirrors normalize.canonicalize's own min_len — short tokens collide too easily).
+_OOV_MIN_LEN = 4
 
 
 def lexical_doc(p: POI) -> str:
-    """Fields BM25 indexes (SPEC §5): name/brand/category/address/attributes/tags + context.
+    """Field-weighted BM25 doc (SPEC §5): identity/intent fields repeated per FIELD_WEIGHTS.
 
-    NB (Fix 3): district/city are kept here. Dropping them to stop the 'trà' ~ 'Sơn Trà'
-    fold-collision regressed tune NDCG@5 0.959 -> 0.948 (location overlap genuinely helps
-    the eval), so the 'trà sữa' -> café fix is carried purely by the parser drink-category
-    curation (CATEGORY_KEYWORDS), which the category hard-filter then honors.
+    A field contributes its text `weight` times; folding+tokenization downstream turns the
+    repeats into raised token frequencies (BM25F-lite). Empty optional fields (brand,
+    sub_category, blank description) contribute nothing — token-identical to the old flat
+    concat when every weight is 1.
     """
-    parts = [
-        p.name,
-        p.brand or "",
-        p.category,
-        p.sub_category or "",
-        p.district,
-        p.city,
-        p.address,
-        " ".join(p.attributes),
-        " ".join(p.tags),
-        p.description,
-    ]
+    fields = {
+        "name": p.name,
+        "brand": p.brand or "",
+        "category": p.category,
+        "sub_category": p.sub_category or "",
+        "district": p.district,
+        "city": p.city,
+        "address": p.address,
+        "attributes": " ".join(p.attributes),
+        "tags": " ".join(p.tags),
+        "description": p.description,
+    }
+    parts: list[str] = []
+    for name, text in fields.items():
+        if text:
+            parts.extend([text] * FIELD_WEIGHTS.get(name, 1))
     return " ".join(parts)
 
 
@@ -45,6 +80,24 @@ class BM25Index:
         self.poi_ids = [p.poi_id for p in pois]
         corpus = [doc_tokens(lexical_doc(p)) for p in pois]
         self.bm25 = BM25Okapi(corpus)
+        # Term lexicon = every token across the (field-weighted) docs. Repetition does
+        # not change the token SET, so the lexicon is identical regardless of FIELD_WEIGHTS.
+        # Drives OOV typo canonicalization in search(): an out-of-vocab query token is
+        # snapped onto its unique edit-1 lexicon neighbour before scoring, giving typo'd
+        # queries lexical recall in every mode with no LLM.
+        self.lexicon: set[str] = set()
+        for toks in corpus:
+            self.lexicon.update(toks)
+
+    def _canonicalize_oov(self, q_tokens: list[str]) -> list[str]:
+        """Snap out-of-vocab query tokens onto their unique edit-1 lexicon neighbour.
+
+        Delegates to normalize.canonicalize (exact match -> unchanged; len < min_len ->
+        untouched; ambiguous edit-1 -> refused/untouched; unique edit-1 -> substituted),
+        so in-vocab and short tokens pass through byte-identically — a clean, fully
+        in-vocab query scores exactly as it would with no canonicalization at all.
+        """
+        return [canonicalize(t, self.lexicon, min_len=_OOV_MIN_LEN) or t for t in q_tokens]
 
     def search(self, query_text: str, k: int | None = None, *,
                drop: set[str] | None = None) -> list[tuple[str, float]]:
@@ -55,8 +108,11 @@ class BM25Index:
         carries them in a field — the quán/quận fold-collision where a District-N
         query token matches every District-N POI's district. Never emptied: if
         dropping would remove all tokens, the full query is kept.
+
+        OOV typo tokens are canonicalized against the index lexicon AFTER expansion
+        (so 'q1'->'quan 1' etc. resolve first) and BEFORE the drop de-pollution.
         """
-        q_tokens = expand_query(query_text)
+        q_tokens = self._canonicalize_oov(expand_query(query_text))
         if drop:
             filtered = [t for t in q_tokens if t not in drop]
             if filtered:
