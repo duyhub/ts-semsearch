@@ -439,10 +439,11 @@ def test_cloud_no_creds_short_circuits_all_probes(pois, monkeypatch):
 
 
 def test_cloud_network_errors_keep_full_walk(pois, monkeypatch):
-    """A network/model error IS potentially regional: the full walk must be preserved
-    (3 regions x 2 providers = 6 embeddings probes)."""
+    """A network/model error IS potentially regional: the full walk must be preserved —
+    cohere walks all 3 default regions; titan walks its own 2-region chain (not offered
+    in ap-southeast-1, so its default chain skips Singapore) = 5 probes total."""
     _CountingNetworkFail.attempts = 0
     monkeypatch.setattr("boto3.client", lambda *a, **k: _CountingNetworkFail())
     pipe = P.FullPipeline(pois, mode="cloud")
     assert pipe.dense is None
-    assert _CountingNetworkFail.attempts == 6
+    assert _CountingNetworkFail.attempts == 5

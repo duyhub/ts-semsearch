@@ -466,6 +466,35 @@ def test_region_chain_precedence(monkeypatch):
     assert E.resolve_bedrock_regions() == ("ap-southeast-1",)  # singular pins exactly one (highest)
 
 
+def test_titan_default_chain_skips_singapore(monkeypatch):
+    """Titan v2 is NOT offered in ap-southeast-1 (regional-absence, measured live) — its
+    DEFAULT chain starts in Tokyo instead of burning a doomed probe on Singapore every run.
+    Only the default is per-model: every env override still replaces any chain verbatim."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    titan = E.MODEL_IDS["bedrock-titan"]
+    assert E.resolve_bedrock_regions(titan) == ("ap-northeast-1", "us-west-2")
+    # models without a per-model entry keep the venue-proximity chain
+    assert E.resolve_bedrock_regions(E.MODEL_IDS["bedrock-cohere"]) == E.DEFAULT_BEDROCK_REGIONS
+    assert E.resolve_bedrock_regions() == E.DEFAULT_BEDROCK_REGIONS
+    # an explicit region pin is the user's word — it wins even for titan
+    monkeypatch.setenv("SEMSEARCH_BEDROCK_REGION", "ap-southeast-1")
+    assert E.resolve_bedrock_regions(titan) == ("ap-southeast-1",)
+
+
+def test_titan_pin_never_probes_singapore(monkeypatch):
+    """The titan embedder walks ITS OWN chain: no bedrock client is ever constructed for
+    ap-southeast-1, and the pin lands directly on ap-northeast-1 (zero wasted probes)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    built = _boto_factory(monkeypatch, lambda region: FakeBedrockClient(titan_responder()))
+    emb = E.BedrockEmbedder("bedrock-titan")
+    vecs = emb.embed(["ping"], input_type="search_query")
+    assert vecs.shape == (1, DIM)
+    assert emb._region == "ap-northeast-1"
+    assert "ap-southeast-1" not in built
+
+
 # --------------------------------------------------------------------------- #
 # Per-capability region walk: embedder pins the FIRST region whose probe works #
 # --------------------------------------------------------------------------- #

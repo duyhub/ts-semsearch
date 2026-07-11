@@ -53,12 +53,20 @@ _BEDROCK_TIMEOUT = {"connect_timeout": 2, "read_timeout": 10, "retries": {"max_a
 #                                                                              #
 # EMPIRICAL, measured live on the AABW event account 2026-07-11:                #
 #   ap-southeast-1 (Singapore, closest to the demo venue): cohere-v3 WORKS;      #
-#       titan-embed-v2 NOT OFFERED in-region; Claude BLOCKED (region-scoped      #
-#       Anthropic "use case details form" -> ResourceNotFoundException).        #
-#   ap-northeast-1 (Tokyo): ALL THREE work (Claude via the global. profile).     #
+#       Claude WORKS (global. profile, after the Anthropic use-case form was     #
+#       approved); titan-embed-v2 NOT OFFERED in-region (regional absence).      #
+#   ap-northeast-1 (Tokyo): ALL THREE work.                                      #
 #   us-west-2 (Oregon): ALL THREE work.                                          #
-# So embeddings pin Singapore while Claude pins Tokyo — resolved per capability. #
+# Titan is the only capability that cannot use Singapore, so ONLY titan gets a   #
+# per-model chain below; cohere and Claude pin venue-proximal Singapore.         #
 DEFAULT_BEDROCK_REGIONS = ("ap-southeast-1", "ap-northeast-1", "us-west-2")
+# Per-MODEL default chains, only for models MEASURED structurally absent from a default
+# region (regional-absence — not an access gate that approval could lift): titan-v2 is not
+# offered in ap-southeast-1, so its chain starts in Tokyo instead of burning a doomed probe
+# on Singapore every run. Env overrides in resolve_bedrock_regions still replace ANY chain.
+MODEL_DEFAULT_REGIONS: dict[str, tuple[str, ...]] = {
+    MODEL_IDS["bedrock-titan"]: ("ap-northeast-1", "us-west-2"),
+}
 SEMSEARCH_BEDROCK_REGION_ENV = "SEMSEARCH_BEDROCK_REGION"    # singular: pin exactly one region
 SEMSEARCH_BEDROCK_REGIONS_ENV = "SEMSEARCH_BEDROCK_REGIONS"  # plural (CSV): replace the whole chain
 
@@ -82,15 +90,17 @@ def is_no_credentials_error(exc: Exception) -> bool:
                             TokenRetrievalError, UnauthorizedSSOTokenError))
 
 
-def resolve_bedrock_regions() -> tuple[str, ...]:
-    """The ordered region chain every Bedrock consumer walks until ITS model works.
+def resolve_bedrock_regions(model_id: str | None = None) -> tuple[str, ...]:
+    """The ordered region chain a Bedrock consumer walks until ITS model works. Pass the
+    consumer's model_id so a model with a measured per-model default chain (titan-v2, absent
+    from Singapore) starts where it actually exists — only the DEFAULT is per-model.
 
     Precedence, highest first:
       1. SEMSEARCH_BEDROCK_REGION (singular) -> exactly one region (a chain of one; keeps the
          existing pin-one-region escape hatch as the strongest override).
       2. SEMSEARCH_BEDROCK_REGIONS (plural, comma-separated) -> replaces the whole chain.
       3. AWS_REGION / AWS_DEFAULT_REGION -> exactly one region (preserves today's semantics).
-      4. DEFAULT_BEDROCK_REGIONS -> the venue-proximity default chain.
+      4. MODEL_DEFAULT_REGIONS[model_id] if present, else DEFAULT_BEDROCK_REGIONS.
 
     Always non-empty (a blank plural value falls through), so a consumer never resolves zero
     regions."""
@@ -105,7 +115,7 @@ def resolve_bedrock_regions() -> tuple[str, ...]:
     aws = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
     if aws:
         return (aws,)
-    return DEFAULT_BEDROCK_REGIONS
+    return MODEL_DEFAULT_REGIONS.get(model_id or "", DEFAULT_BEDROCK_REGIONS)
 
 
 def compose_doc_text(p: POI) -> str:
@@ -227,7 +237,7 @@ class BedrockEmbedder:
         credentials are account-wide, not regional, so probing the remaining regions can only
         burn 2 more connect-timeouts for the same answer. Network/model errors keep the full
         per-region walk (an outage or a missing model CAN be regional)."""
-        regions = resolve_bedrock_regions()
+        regions = resolve_bedrock_regions(self.model_id)
         last_exc: Exception | None = None
         for region in regions:
             try:

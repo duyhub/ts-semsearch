@@ -6,8 +6,8 @@ Diagnostic, NOT a gate. Walks the runtime's region-fallback chain and, for every
 each of the three models this entry can use, reports one of:
   - PASS              the model answered in this region
   - regional-absence  the model is not offered in this region (e.g. Titan v2 in Singapore)
-  - access-block      the model exists but is gated here (e.g. the region-scoped Anthropic
-                      use-case form → ResourceNotFoundException for Claude in ap-southeast-1)
+  - access-block      the model exists but is gated here (e.g. an unsubmitted Anthropic
+                      use-case form → ResourceNotFoundException for Claude, until approved)
 
 The three models:
   - cohere.embed-multilingual-v3         (embeddings, bedrock-cohere)
@@ -156,10 +156,17 @@ def main() -> int:
     from botocore.exceptions import BotoCoreError
 
     regions = resolve_bedrock_regions()
+    # Titan has its own default chain (not offered in ap-southeast-1 — regional absence,
+    # measured). The matrix still PROBES titan in every displayed region (informative), but
+    # the resolved line only counts regions the runtime would actually walk for titan.
+    titan_chain = resolve_bedrock_regions(TITAN_MODEL_ID)
     cfg = _config()
 
     print("Bedrock preflight (FR-10, Built-with-AWS) — per-region model-access matrix")
     print(f"  region chain: {', '.join(regions)}")
+    if titan_chain != regions:
+        print(f"  titan-v2 chain: {', '.join(titan_chain)} (per-model default — titan-v2 is "
+              "not offered in the skipped region(s))")
     print("    (SEMSEARCH_BEDROCK_REGION pins one region; SEMSEARCH_BEDROCK_REGIONS replaces the")
     print("     whole chain; else AWS_REGION / AWS_DEFAULT_REGION; else the venue-proximity default)")
     # Activation (FR-4 LLM parse + Langfuse tracing) — both OFF by default (NFR-5).
@@ -213,7 +220,7 @@ def main() -> int:
 
         ok, detail = _probe_embed(runtime, TITAN_MODEL_ID, titan_body)
         _print_row("amazon.titan-embed-v2", ok, detail)
-        if ok and resolved_titan is None:
+        if ok and resolved_titan is None and region in titan_chain:
             resolved_titan = region
 
         ok, detail, claude_id = _probe_claude(runtime)
