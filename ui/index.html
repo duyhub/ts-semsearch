@@ -86,6 +86,11 @@
   .latency{margin-left:auto; flex:none; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600;
     color:var(--primary-deep); background:var(--primary-tint); padding:5px 11px; border-radius:var(--radius-pill); font-variant-numeric:tabular-nums}
   .latency .bolt{width:6px;height:6px;border-radius:50%;background:var(--primary)}
+  .locstatus{flex:none; display:inline-flex; align-items:center; gap:6px; color:var(--ink-mute);
+    font-size:12px; white-space:nowrap}
+  .locstatus::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--ink-mute)}
+  .locstatus[data-status="ready"]{color:var(--primary-deep)}
+  .locstatus[data-status="ready"]::before{background:var(--primary)}
   .viewseg{display:none; margin-left:auto; flex:none; background:var(--surface); border:1px solid var(--line-2); border-radius:var(--radius-pill); padding:3px}
   .viewseg button{border:none;background:none;color:var(--ink-dim);font-weight:600;font-size:13px;padding:6px 13px;border-radius:var(--radius-pill)}
   .viewseg button[aria-pressed="true"]{background:var(--ink);color:#fff}
@@ -241,6 +246,8 @@
   @media (max-width:560px){
     .searchwrap{order:3; flex-basis:100%; max-width:none}
     .topbar{height:auto; flex-wrap:wrap; padding:10px 14px; gap:10px}
+    .rhead{gap:8px}
+    .locstatus{width:8px; gap:0; overflow:hidden; font-size:0}
     body{height:auto; min-height:100dvh; overflow:auto}
     #app{min-height:66vh}
   }
@@ -272,6 +279,7 @@
   <div class="qhint" id="qhint"></div>
   <div class="intentpills" id="intentPills"></div>
   <div class="latency" id="latency"><span class="bolt"></span><span id="latVal">— ms</span></div>
+  <div class="locstatus" id="locStatus" data-status="pending" role="status" aria-live="polite">Đang xác định vị trí…</div>
   <div class="viewseg" role="group" aria-label="Danh sách hoặc bản đồ">
     <button id="viewList" aria-pressed="true">Danh sách</button>
     <button id="viewMap" aria-pressed="false">Bản đồ</button>
@@ -316,7 +324,43 @@ const SIG_GLOSS = {semantic:"khớp ngữ nghĩa (BM25 + vector, RRF)", attribut
   price:"phù hợp mức giá (rẻ / cao cấp)"};
 const fmtInt = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, corrected:'', took:0, selected:null, weights:{}, loading:false};
+let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, corrected:'', took:0, selected:null, weights:{}, loading:false, requestSeq:0};
+const locationState = {requested:false, coords:null};
+
+function setLocationStatus(status, text){
+  const el=$('#locStatus');
+  el.dataset.status=status;
+  el.textContent=text;
+}
+function requestLocationOnce(){
+  if(locationState.requested) return;
+  locationState.requested=true;
+  if(!('geolocation' in navigator)){
+    setLocationStatus('fallback','Vị trí không khả dụng');
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const lat=pos.coords.latitude, lon=pos.coords.longitude;
+      if(Number.isFinite(lat) && Number.isFinite(lon)){
+        locationState.coords={lat,lon};
+        setLocationStatus('ready','Đang dùng vị trí của bạn');
+        // Refresh the active query once so the visible results, reasons, and map match
+        // the newly available location. run()'s request sequence prevents the older
+        // location-less response from overwriting this refresh.
+        if(state.q) run(state.q);
+      }else{
+        setLocationStatus('fallback','Vị trí không khả dụng');
+      }
+    },
+    ()=>setLocationStatus('fallback','Không dùng vị trí'),
+    {enableHighAccuracy:false, timeout:5000, maximumAge:300000}
+  );
+}
+function locationQuery(){
+  const c=locationState.coords;
+  return c ? `&lat=${encodeURIComponent(c.lat)}&lon=${encodeURIComponent(c.lon)}` : '';
+}
 
 /* ---------- parse the fact-based reasons into card elements ---------- */
 function parseReasons(reasons){
@@ -524,21 +568,25 @@ function skeletons(el,n){ el.innerHTML = Array.from({length:n},()=>`<div class="
 
 async function run(query){
   const q=(query ?? $('#q').value).trim(); if(!q) return;
+  const requestSeq=++state.requestSeq;
   state.q=q; $('#q').value=q; $('#qecho').textContent=`“${q}”`;
   $$('.chip').forEach(c=>c.setAttribute('aria-pressed', String(c.dataset.q===q)));
   $('#latVal').textContent='… ms'; state.selected=null;
   skeletons($('#semList'),6); skeletons($('#kwList'),6);
   try{
+    const loc=locationQuery();
     const [sem,kw] = await Promise.all([
-      fetch(`/v1/semantic-search?q=${encodeURIComponent(q)}&limit=8`).then(r=>{if(!r.ok)throw 0;return r.json();}),
-      fetch(`/v1/search?q=${encodeURIComponent(q)}&engine=keyword&limit=8`).then(r=>r.ok?r.json():{results:[]}),
+      fetch(`/v1/semantic-search?q=${encodeURIComponent(q)}&limit=8${loc}`).then(r=>{if(!r.ok)throw 0;return r.json();}),
+      fetch(`/v1/search?q=${encodeURIComponent(q)}&engine=keyword&limit=8${loc}`).then(r=>r.ok?r.json():{results:[]}),
     ]);
+    if(requestSeq!==state.requestSeq) return;
     state.sem=sem.results||[]; state.intent=sem.intent||{}; state.took=sem.meta?.tookMs ?? 0;
     state.corrected = (sem && sem.meta && sem.meta.correctedQuery) || '';  // LLM-corrected query
     state.weights=sem.weights||{}; state.semSource = state.sem[0]?.source; state.kw=kw.results||[];
     $('#latVal').textContent=`${Math.round(state.took)} ms`;
     renderResults();
   }catch(err){
+    if(requestSeq!==state.requestSeq) return;
     $('#semList').innerHTML=`<div class="errbox">Máy chủ đang bận, thử lại.<button id="retry">Thử lại</button></div>`;
     $('#kwList').innerHTML=''; $('#latVal').textContent='— ms';
     $('#retry')?.addEventListener('click',()=>run(q));
@@ -568,6 +616,7 @@ $('#modeProduct').addEventListener('click',()=>setMode('product'));
 $('#modeCompare').addEventListener('click',()=>setMode('compare'));
 $('#viewList').addEventListener('click',()=>setView('list'));
 $('#viewMap').addEventListener('click',()=>setView('map'));
+requestLocationOnce();
 run(CHIPS[0]);
 </script>
 </body>

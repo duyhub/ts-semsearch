@@ -98,6 +98,12 @@ def test_superlative_on_other_category_not_hijacked(pipe):
     assert all(r.poi.category == "Trạm xăng" for r in results)
 
 
+def test_tiem_xang_returns_only_gas_stations(pipe):
+    _, results = pipe.search("tiệm xăng gần nhất", k=10)
+    assert results
+    assert all(r.poi.category == "Trạm xăng" for r in results)
+
+
 def test_genuine_proper_name_query_still_returns_it(pipe):
     # The corroboration gate must NOT harm a real proper-name search: when the user
     # actually wants "Thống Nhất", dense ranks the park top, so it still comes first.

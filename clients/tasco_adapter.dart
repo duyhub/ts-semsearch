@@ -78,6 +78,9 @@ class TascoSemanticClient {
     int limit = 10,
     String lang = 'vi',
   }) async {
+    if ((lat == null) != (lon == null)) {
+      throw ArgumentError('lat and lon must be supplied together');
+    }
     final params = <String, String>{
       'q': query,
       'limit': '$limit',

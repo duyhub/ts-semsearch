@@ -67,14 +67,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -83,14 +87,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -99,14 +107,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -239,14 +250,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -255,14 +270,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -271,14 +290,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -411,14 +433,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -427,14 +453,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -443,14 +473,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -583,14 +616,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -599,14 +636,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -615,14 +656,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",

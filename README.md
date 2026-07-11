@@ -123,6 +123,12 @@ uv run uvicorn semsearch.api:create_app --factory --port 8000
 #         GET /health   ·   GET /docs (OpenAPI)
 ```
 
+The demo UI requests browser location once without delaying search. When permission is
+granted, it sends paired `lat`/`lon` to both search lanes: semantic results are proximity-
+ranked, while the BM25 comparison lane remains keyword-ranked and only gains distance/filter
+context. If location is denied, unsupported, or times out, search continues with the engine's
+normal non-location fallback. Browser geolocation works on `localhost` or HTTPS origins.
+
 ### Deployment modes
 
 The engine has one switch for how it sources models — `DEFAULT_MODE` in

@@ -238,3 +238,97 @@ def test_negative_radius_is_contract_400():
                    params={"q": "cà phê", "lat": 10.0, "lon": 106.0, "radiusMeters": -5})
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "invalid_request"
+
+
+# --- Request-location proximity suggestions ---------------------------------
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"lat": 10.77},
+        {"lon": 106.70},
+        {"radiusMeters": 1_000},
+        {"lat": 91.0, "lon": 106.70},
+        {"lat": -91.0, "lon": 106.70},
+        {"lat": 10.77, "lon": 181.0},
+        {"lat": 10.77, "lon": -181.0},
+    ],
+)
+def test_location_parameters_require_a_valid_pair(params):
+    """A partial/out-of-range focus must not silently degrade to a non-local search."""
+    r = client.get("/v1/search", params={"q": "cà phê gần đây", **params})
+    assert r.status_code == 400
+    body = r.json()
+    assert body["error"]["code"] == "invalid_request"
+    assert body.get("requestId")
+    assert r.headers.get("X-Request-Id")
+
+
+def test_request_location_drives_ranking_semantic_anchor_and_distance(monkeypatch):
+    # Exact coordinates of G031 make all three observable proximity surfaces
+    # deterministic: it ranks first, its distance signal is 1, and its displayed
+    # distance rounds to zero metres.
+    # Keep this API contract test independent of the optional local embedding model;
+    # BM25 + the full signal ranker exercises the same request-anchor behavior.
+    monkeypatch.setattr(app.state.pipeline, "dense", None)
+    lat, lon = 10.764197, 106.716451
+    r = client.get(
+        "/v1/semantic-search",
+        params={"q": "cây xăng 24/7 gần đây", "lat": lat, "lon": lon, "limit": 5},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["intent"]["anchor"]["lat"] == pytest.approx(lat)
+    assert body["intent"]["anchor"]["lon"] == pytest.approx(lon)
+
+    top = body["results"][0]
+    assert top["id"] == "poi:G031"
+    assert top["distanceMeters"] == 0
+    assert top["breakdown"]["distance"] == pytest.approx(1.0)
+    assert any(reason.startswith("cách ") for reason in top["reasons"])
+
+
+def test_explicit_query_anchor_takes_precedence_over_request_location(monkeypatch):
+    # Device location is in TP.HCM, but an explicit "gần Hồ Gươm" request must
+    # continue to rank/explain against Hồ Gươm rather than the device location.
+    monkeypatch.setattr(app.state.pipeline, "dense", None)
+    r = client.get(
+        "/v1/semantic-search",
+        params={
+            "q": "cà phê wifi cạnh hồ gươm",
+            "lat": 10.764197,
+            "lon": 106.716451,
+            "limit": 5,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    anchor = body["intent"]["anchor"]
+    assert anchor["name"] == "Hồ Gươm"
+    assert anchor["lat"] == pytest.approx(21.0287, abs=0.01)
+    assert anchor["lon"] == pytest.approx(105.8524, abs=0.01)
+    assert any("Hồ Gươm" in reason for reason in body["results"][0]["reasons"])
+
+
+def test_location_aware_global_fallback_is_nearest_first(monkeypatch):
+    # An impossible bbox empties the filtered pool and deliberately invokes the
+    # global never-empty backstop. With a request location, nearest must replace
+    # the legacy popularity-only ordering.
+    monkeypatch.setattr(app.state.pipeline, "dense", None)
+    lat, lon = 10.764197, 106.716451  # exact coordinates of G031
+    r = client.get(
+        "/v1/search",
+        params={
+            "q": "cà phê",
+            "lat": lat,
+            "lon": lon,
+            "bbox": "100,0,101,1",
+            "limit": 1,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["meta"]["source"] == "fallback"
+    assert body["results"][0]["id"] == "poi:G031"
+    assert body["results"][0]["distanceMeters"] == 0
