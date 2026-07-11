@@ -78,6 +78,9 @@ class TascoSemanticClient {
     int limit = 10,
     String lang = 'vi',
   }) async {
+    if ((lat == null) != (lon == null)) {
+      throw ArgumentError('lat and lon must be supplied together');
+    }
     final params = <String, String>{
       'q': query,
       'limit': '$limit',
@@ -93,13 +96,34 @@ class TascoSemanticClient {
 
     final res = await _http.get(uri, headers: headers);
     if (res.statusCode != 200) {
-      // Contract-exact ErrorResponse: { error: {code, message}, requestId }
-      final err = jsonDecode(res.body) as Map<String, dynamic>;
-      throw TascoApiException(res.statusCode, err['error']?['code'], err['error']?['message']);
+      throw _errorFor(res);
     }
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final results = (body['results'] as List).cast<Map<String, dynamic>>();
     return results.map(SearchSuggestion.fromPlaceResult).toList();
+  }
+
+  /// Build a structured exception from a non-200 response. The body is usually the
+  /// contract ErrorResponse `{ error: {code, message}, requestId }`, but a proxy or
+  /// gateway can return HTML/plain text — so JSON parsing is guarded and falls back
+  /// to a body snippet. The response's X-Request-Id is surfaced when present.
+  TascoApiException _errorFor(http.Response res) {
+    final requestId = res.headers['x-request-id']; // http lowercases header keys
+    try {
+      final err = jsonDecode(res.body) as Map<String, dynamic>;
+      final e = err['error'];
+      return TascoApiException(
+        res.statusCode,
+        (e is Map) ? e['code'] as String? : null,
+        (e is Map) ? e['message'] as String? : null,
+        requestId: requestId ?? (err['requestId'] as String?),
+      );
+    } catch (_) {
+      // Non-JSON body (e.g. an upstream proxy's HTML error page).
+      final b = res.body;
+      final snippet = b.length > 200 ? '${b.substring(0, 200)}...' : b;
+      return TascoApiException(res.statusCode, null, snippet, requestId: requestId);
+    }
   }
 }
 
@@ -107,7 +131,11 @@ class TascoApiException implements Exception {
   final int status;
   final String? code;
   final String? message;
-  TascoApiException(this.status, this.code, this.message);
+  final String? requestId;
+  TascoApiException(this.status, this.code, this.message, {this.requestId});
   @override
-  String toString() => 'TascoApiException($status $code): $message';
+  String toString() {
+    final req = requestId != null ? ' req=$requestId' : '';
+    return 'TascoApiException($status ${code ?? '-'}$req): $message';
+  }
 }

@@ -7,10 +7,13 @@ import pytest
 
 from semsearch.data import POI, Anchor, QueryIntent
 from semsearch.rank import (
+    LinearRanker,
     attributes_signal,
+    category_signal,
     distance_signal,
     open_now_signal,
     popularity_signal,
+    price_signal,
     rating_signal,
     semantic_signal,
 )
@@ -49,11 +52,39 @@ def test_attributes_signal():
     assert attributes_signal(_intent(), {"wifi"}) == 0.5  # no required -> neutral
 
 
+def test_category_signal():
+    # neutral (inert) when the query has no parsed category
+    assert category_signal(_intent(), _poi(category="Quán cà phê")) == 0.5
+    # 1.0 on exact category match, 0.0 on mismatch
+    assert category_signal(_intent(category="Quán cà phê"), _poi(category="Quán cà phê")) == 1.0
+    assert category_signal(_intent(category="Quán cà phê"), _poi(category="Trạm xăng")) == 0.0
+
+
 def test_distance_signal_neutral_without_anchor_and_one_at_zero():
     assert distance_signal(_intent(), _poi()) == 0.5
     p = _poi(lat=10.77, lon=106.70)
     intent = _intent(anchor=Anchor("x", 10.77, 106.70))
     assert distance_signal(intent, p) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_distance_weight_is_excluded_without_a_real_anchor():
+    ranker = LinearRanker(
+        weights={"semantic": 1.0, "distance": 1.0},
+        now=datetime(2026, 7, 11, 14, 0),
+        global_rating_mean=4.2,
+    )
+    score, breakdown = ranker.score(1.0, _intent(), _poi(), set(), set())
+    assert breakdown["distance"] == 0.5  # diagnostic value remains explicit
+    assert score == pytest.approx(1.0)  # distance weight is absent, not averaged as 0.5
+
+    anchored_score, _ = ranker.score(
+        0.0,
+        _intent(anchor=Anchor("x", 10.77, 106.70)),
+        _poi(),
+        set(),
+        set(),
+    )
+    assert anchored_score == pytest.approx(0.5)  # (semantic 0 + distance 1) / 2
 
 
 def test_rating_signal_monotonic():
@@ -87,3 +118,20 @@ def test_open_now_determinism_across_times():
     p = _poi(opening_hours="18:00-03:00")
     t = datetime(2026, 7, 11, 20, 0)
     assert open_now_signal(_intent(), p, t) == open_now_signal(_intent(), p, t)
+
+
+def test_price_signal_directions():
+    cheap = _intent(price_pref="cheap")
+    pricey = _intent(price_pref="expensive")
+    # cheap intent: level 1 (cheapest) scores high, level 4 (priciest) scores low
+    assert price_signal(cheap, _poi(price_level=1)) == pytest.approx(1.0)
+    assert price_signal(cheap, _poi(price_level=4)) == pytest.approx(0.0)
+    assert price_signal(cheap, _poi(price_level=1)) > price_signal(cheap, _poi(price_level=3))
+    # expensive intent inverts
+    assert price_signal(pricey, _poi(price_level=4)) == pytest.approx(1.0)
+    assert price_signal(pricey, _poi(price_level=1)) == pytest.approx(0.0)
+    # no price intent -> neutral (constant across POIs -> no ranking effect)
+    assert price_signal(_intent(), _poi(price_level=1)) == 0.5
+    assert price_signal(_intent(), _poi(price_level=4)) == 0.5
+    # unknown price_level -> neutral even with an intent
+    assert price_signal(cheap, _poi(price_level=None)) == 0.5

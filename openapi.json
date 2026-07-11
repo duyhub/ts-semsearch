@@ -5,6 +5,24 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/": {
+      "get": {
+        "summary": "Index",
+        "operationId": "index__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -49,14 +67,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -65,14 +87,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -81,14 +107,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -140,6 +169,16 @@
               "type": "string",
               "default": "vi",
               "title": "Lang"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
             }
           },
           {
@@ -211,14 +250,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -227,14 +270,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -243,14 +290,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -302,6 +352,16 @@
               "type": "string",
               "default": "vi",
               "title": "Lang"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
             }
           },
           {
@@ -373,14 +433,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -389,14 +453,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -405,14 +473,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -464,6 +535,16 @@
               "type": "string",
               "default": "vi",
               "title": "Lang"
+            }
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "full",
+              "title": "Engine"
             }
           },
           {
@@ -535,14 +616,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
-            }
+            },
+            "description": "WGS84 latitude; supply together with lon"
           },
           {
             "name": "lon",
@@ -551,14 +636,18 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
-            }
+            },
+            "description": "WGS84 longitude; supply together with lat"
           },
           {
             "name": "radiusMeters",
@@ -567,14 +656,17 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "number"
+                  "type": "number",
+                  "minimum": 0
                 },
                 {
                   "type": "null"
                 }
               ],
+              "description": "Optional radius filter; requires both lat and lon",
               "title": "Radiusmeters"
-            }
+            },
+            "description": "Optional radius filter; requires both lat and lon"
           },
           {
             "name": "bbox",
@@ -780,6 +872,17 @@
             "type": "string",
             "title": "Source",
             "default": "semsearch"
+          },
+          "correctedQuery": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctedquery"
           }
         },
         "type": "object",
@@ -789,6 +892,104 @@
           "tookMs"
         ],
         "title": "Meta"
+      },
+      "PlaceDetail": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "attributes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attributes",
+            "default": []
+          },
+          "rating": {
+            "type": "number",
+            "title": "Rating"
+          },
+          "reviewCount": {
+            "type": "integer",
+            "title": "Reviewcount"
+          },
+          "priceLevel": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricelevel"
+          },
+          "openingHours": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openinghours"
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
+          "subCategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "district": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "District"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rating",
+          "reviewCount"
+        ],
+        "title": "PlaceDetail",
+        "description": "Extra POI fields for the UI's \"Chi tiết\" (details) panel — not part of the\ncontract-exact /v1/search response, only the enriched /v1/semantic-search."
       },
       "PlaceResult": {
         "properties": {
@@ -954,6 +1155,9 @@
             },
             "type": "array",
             "title": "Reasons"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/PlaceDetail"
           }
         },
         "type": "object",
@@ -969,7 +1173,8 @@
           "source",
           "tags",
           "breakdown",
-          "reasons"
+          "reasons",
+          "detail"
         ],
         "title": "SemanticPlaceResult"
       },
@@ -991,6 +1196,14 @@
           },
           "meta": {
             "$ref": "#/components/schemas/Meta"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Weights",
+            "default": {}
           }
         },
         "type": "object",

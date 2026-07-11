@@ -5,7 +5,10 @@ import pytest
 
 from semsearch.data import load_pois
 from semsearch.geo import Gazetteer
+from semsearch.normalize import canonicalize
 from semsearch.parse import Parser
+from semsearch.pipeline import FullPipeline
+from semsearch.rank import load_weights
 
 
 @pytest.fixture(scope="module")
@@ -14,8 +17,15 @@ def parser():
     return Parser(pois, Gazetteer(pois))
 
 
+@pytest.fixture(scope="module")
+def pipe():
+    # local/local pipeline (the demo config); exercises the parse fix end-to-end
+    # through the constraint hard-filter (SPEC §6).
+    return FullPipeline(load_pois(), weights=load_weights(), mode="local")
+
+
 def test_work_cafe_intent(parser):
-    intent = parser.parse("quán cà phê yên tĩnh để làm việc")
+    intent = parser.parse("quán cà phê yên tĩnh làm việc")
     assert intent.category == "Quán cà phê"
     assert "yên tĩnh" in intent.required_attrs
     assert "phù hợp làm việc" in intent.required_attrs
@@ -23,7 +33,7 @@ def test_work_cafe_intent(parser):
 
 
 def test_wifi_near_landmark_intent(parser):
-    intent = parser.parse("cafe có wifi gần hồ gươm")
+    intent = parser.parse("cafe wifi gần hồ gươm")
     assert intent.category == "Quán cà phê"          # cafe -> cà phê
     assert "wifi" in intent.required_attrs
     assert intent.anchor is not None
@@ -36,7 +46,332 @@ def test_gas_24_7_intent(parser):
     assert "24/7" in intent.required_attrs
 
 
+def test_tiem_xang_synonym_is_fully_consumed(parser):
+    intent = parser.parse("tiệm xăng gần nhất")
+    assert intent.category == "Trạm xăng"
+    assert intent.residual_terms == []
+    assert not intent.has_residual
+
+
 def test_non_accented_still_parses(parser):
     intent = parser.parse("quan cafe yen tinh")
     assert intent.category == "Quán cà phê"
     assert "yên tĩnh" in intent.required_attrs
+
+
+def test_district_word_boundary_no_false_match(parser):
+    # "quận 10" must NOT resolve to the "Quận 1" district (substring collision).
+    intent = parser.parse("quán cà phê quận 10 tphcm")
+    assert intent.district != "Quận 1"
+
+
+def test_subject_terms_extracted_and_block_category(parser):
+    intent = parser.parse("quán bún chả khách du lịch")
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+    assert intent.has_residual  # residual content present -> category filter ineligible
+
+
+def test_generic_adjective_is_stopword(parser):
+    # "cafe ngon": 'ngon' is a generic adjective (stopword) -> no residual content.
+    intent = parser.parse("cafe ngon")
+    assert intent.category == "Quán cà phê"
+    assert not intent.has_residual
+    assert intent.content_terms == []
+
+
+def test_price_cheap_intent_parsed(parser):
+    # "cafe rẻ nhất" (cheapest café): price direction = cheap; 'nhất' handled downstream.
+    intent = parser.parse("cafe rẻ nhất")
+    assert intent.category == "Quán cà phê"
+    assert intent.price_pref == "cheap"
+
+
+def test_price_expensive_intent_parsed(parser):
+    intent = parser.parse("nhà hàng sang trọng")
+    assert intent.category == "Nhà hàng"
+    assert intent.price_pref == "expensive"
+
+
+def test_price_binh_dan_is_cheap(parser):
+    assert parser.parse("quán ăn bình dân").price_pref == "cheap"
+
+
+def test_dat_booking_not_read_as_expensive(parser):
+    # folded "đặt" (to book) collides with "đắt" (expensive) — must NOT fire price.
+    intent = parser.parse("đặt bàn nhà hàng")
+    assert intent.price_pref is None
+
+
+def test_no_price_word_leaves_pref_none(parser):
+    assert parser.parse("cafe yên tĩnh để làm việc").price_pref is None
+
+
+def test_price_sang_not_fired_by_morning_sang(parser):
+    # 'sáng' (morning) must NOT parse as expensive; the price key 'sang' is luxury.
+    intent = parser.parse("quán ăn sáng")
+    assert intent.price_pref is None
+
+
+def test_category_park_not_fired_by_parking(parser):
+    # 'parking' must not trip the 'park' -> Công viên keyword.
+    intent = parser.parse("nhà hàng có chỗ parking")
+    assert intent.category != "Công viên"
+
+
+def test_tra_sua_maps_to_cafe(parser):
+    assert parser.parse("trà sữa ngon").category == "Quán cà phê"
+
+
+def test_bare_tra_does_not_misfire_on_son_tra(parser):
+    # 'sơn trà' (a district) must not trigger the drink category.
+    assert parser.parse("quán ngon sơn trà").category != "Quán cà phê"
+
+
+def test_superlative_nhat_not_a_subject(parser):
+    # 'nhất' is a common superlative particle -> not a distinctive subject/residual.
+    intent = parser.parse("địa điểm nổi tiếng nhất")
+    assert "nhat" not in intent.content_terms
+    assert "nhat" not in intent.residual_terms
+
+
+def test_food_subject_survives_common_word_filter(parser):
+    # 'chả' folds to 'cha' but is not the common word 'cha' -> stays a subject.
+    intent = parser.parse("quán bún chả khách du lịch")
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+
+
+def test_abbrev_district_resolves_anchor_and_district(parser):
+    # "q1 tphcm" (abbreviated) must resolve to the Quận 1 district anchor and
+    # populate intent.district — previously the folded "q1" never matched the
+    # gazetteer key "quan 1", leaving anchor None (the reported bug).
+    intent = parser.parse("quan ca phe o q1 tphcm")
+    assert intent.category == "Quán cà phê"
+    assert intent.city == "TP.HCM"
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.77, abs=0.05)  # Quận 1 centroid
+    assert intent.district is not None
+
+
+# --- Batch C (C3): coordinate-in-query anchors (SPEC §7.1; PRD FR-2) ---
+
+def test_coordinate_query_sets_anchor(parser):
+    intent = parser.parse("10.7738, 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+    # the '.'-shattered integer shards ('10','7738',...) must not pollute the residual
+    assert intent.content_terms == []
+    assert not intent.has_residual
+    assert intent.residual_terms == []
+
+
+def test_coordinate_space_separated_parses(parser):
+    intent = parser.parse("gần 10.7738 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+
+
+def test_coordinate_swapped_order_parses(parser):
+    intent = parser.parse("106.704, 10.7738")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert intent.anchor.lon == pytest.approx(106.704, abs=1e-4)
+
+
+def test_coordinate_with_category_parses_both(parser):
+    intent = parser.parse("quán cà phê 10.7738,106.704")
+    assert intent.category == "Quán cà phê"
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+    assert not intent.content_terms  # coordinate shards are not subjects
+
+
+def test_out_of_bounds_coordinate_leaves_anchor_none(parser):
+    intent = parser.parse("50.0, 8.0")
+    assert intent.anchor is None
+
+
+def test_rating_decimal_is_not_a_coordinate(parser):
+    intent = parser.parse("cà phê 3.5 sao")
+    assert intent.anchor is None
+
+
+def test_24_7_is_not_a_coordinate(parser):
+    intent = parser.parse("cây xăng 24/7 gần đây")
+    assert intent.anchor is None
+
+
+def test_coordinate_takes_precedence_over_gazetteer(parser):
+    # an explicit coordinate (HCMC, lat ~10.77) wins over a landmark name (Hồ Gươm,
+    # Hà Nội, lat ~21.03) that also appears in the query.
+    intent = parser.parse("cafe gần hồ gươm 10.7738, 106.704")
+    assert intent.anchor is not None
+    assert intent.anchor.lat == pytest.approx(10.7738, abs=1e-4)
+
+
+# --- Typo correction wired into the rule parser (PRD FR-3; SPEC §3) ---
+# OOV query tokens (len >= 4, not a recognized word) are fuzzy-matched (edit
+# distance <= 1, incl. adjacent transposition) to the closed category/attribute/
+# location vocabularies and rewritten to the canonical form FOR MATCHING ONLY.
+
+def test_typo_attribute_fr3_acceptance(parser):
+    # PRD FR-3 acceptance example: 'yen tihn' (transposed 'yen tinh') still parses
+    # to the yên tĩnh attribute. Correction fires on the OOV token 'tihn' -> 'tinh'.
+    intent = parser.parse("cafe yen tihn")
+    assert intent.category == "Quán cà phê"
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_typo_wifi_substitution(parser):
+    # 'wjfi' (edit-1 substitution of 'wifi') resolves to the wifi attribute.
+    intent = parser.parse("quan cafe yen tinh co wjfi")
+    assert "wifi" in intent.required_attrs
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_typo_category_token(parser):
+    # 'hnag' (transposed 'hang') -> nhà hàng category.
+    intent = parser.parse("nha hnag ngon")
+    assert intent.category == "Nhà hàng"
+
+
+def test_typo_district_token(parser):
+    # 'kiam' (edit-1 of 'kiem') -> Hoàn Kiếm district + anchor.
+    intent = parser.parse("quan ca phe hoan kiam")
+    assert intent.category == "Quán cà phê"
+    assert intent.district is not None and "Kiếm" in intent.district
+    assert intent.anchor is not None
+
+
+def test_typo_correction_preserves_raw_and_normalized_echo(parser):
+    # The correction is internal to matching: raw + normalized echo the ORIGINAL
+    # (typo'd) tokens; only the match haystack sees the canonical form.
+    intent = parser.parse("cafe yen tihn")
+    assert intent.raw == "cafe yen tihn"
+    assert "tihn" in intent.normalized and "tinh" not in intent.normalized
+
+
+def test_typo_corrected_token_not_left_in_residual(parser):
+    # A corrected-and-consumed typo must not leak its ORIGINAL form into the
+    # residual: 'yen tihn' is fully explained (attribute), so no residual remains.
+    intent = parser.parse("cafe yen tihn")
+    assert not intent.has_residual
+    assert "tihn" not in intent.residual_terms
+    assert intent.content_terms == []
+
+
+def test_near_collision_not_corrected(parser):
+    # Guard: 'banh' (bánh) is edit-1 from THREE vocab tokens (binh/benh/hanh) via
+    # substitution -> genuinely ambiguous -> refused. It must never be rewritten.
+    assert canonicalize("banh", parser._correct_target) is None
+
+
+def test_short_typo_token_never_corrected(parser):
+    # Guard: tokens < 4 chars are never fuzzy-corrected (they collide too easily).
+    assert canonicalize("wif", parser._correct_target) is None
+
+
+def test_distinctive_subject_not_hijacked_by_correction(parser):
+    # design point 3: a recognized distinctive subject token ('bạch', a POI-name
+    # token df=1) is edit-1 from the attribute key 'beach' (gần biển) — but it is a
+    # KNOWN word, so it is NEVER corrected. It flows to content_terms; no spurious
+    # gần biển attribute is injected.
+    intent = parser.parse("quán bạch đằng")
+    assert "bach" in intent.content_terms
+    assert "gần biển" not in intent.required_attrs
+
+
+def test_clean_query_unaffected_by_correction(parser):
+    # Regression: a clean, fully-diacritic query parses exactly as before — no OOV
+    # token, so the correction map is empty and matching is byte-identical.
+    intent = parser.parse("quán cà phê yên tĩnh")
+    assert intent.category == "Quán cà phê"
+    assert intent.required_attrs == ["yên tĩnh"]
+    assert intent.content_terms == []
+    assert not intent.has_residual
+    assert intent.normalized == "quan ca phe yen tinh"
+
+
+# --- Need -> category inference (conversational need-queries; SPEC §7, PRD FR-2) ---
+# A need phrase ("đói bụng" = I'm hungry) with NO explicit place-type word fills the
+# category so the pipeline's category hard-filter can fire. Need tokens are consumed
+# exactly like category-keyword tokens, so a fully-explained need query has no residual.
+
+def test_need_hunger_sets_restaurant_and_empties_residual(parser):
+    intent = parser.parse("mình đói bụng quá, mình ở TPHCM")
+    assert intent.category == "Nhà hàng"
+    assert intent.city == "TP.HCM"
+    assert intent.residual_terms == []
+    assert not intent.has_residual
+
+
+def test_need_hunger_folded_form_same_intent(parser):
+    # no-diacritics form parses identically (folding is what makes plain input match).
+    intent = parser.parse("minh doi bung qua, minh o tphcm")
+    assert intent.category == "Nhà hàng"
+    assert intent.city == "TP.HCM"
+    assert intent.residual_terms == []
+
+
+def test_need_thirst_maps_to_cafe(parser):
+    assert parser.parse("khat nuoc qua").category == "Quán cà phê"
+
+
+def test_need_out_of_gas_maps_to_gas_station(parser):
+    assert parser.parse("het xang roi").category == "Trạm xăng"
+
+
+def test_need_buy_cold_medicine_maps_to_pharmacy(parser):
+    assert parser.parse("can mua thuoc cam").category == "Nhà thuốc"
+
+
+def test_explicit_category_unaffected_by_need_layer(parser):
+    # a clean explicit-category query is untouched: category + attrs unchanged.
+    intent = parser.parse("quán cà phê yên tĩnh")
+    assert intent.category == "Quán cà phê"
+    assert "yên tĩnh" in intent.required_attrs
+
+
+def test_explicit_category_beats_need(parser):
+    # BOTH an explicit place-type word AND a need phrase -> the explicit one wins.
+    intent = parser.parse("quán cà phê đói bụng quá")
+    assert intent.category == "Quán cà phê"
+
+
+def test_fold_collision_doi_without_bung_no_category(parser):
+    # 'đôi' folds to 'doi' (collides with đói); it must NOT trigger Nhà hàng.
+    # The only doi-based need trigger is the bigram "đói bụng".
+    assert parser.parse("cặp đôi chụp hình").category != "Nhà hàng"
+    assert parser.parse("đôi giày").category is None
+    assert parser.parse("ngọn đồi quá đẹp").category is None
+
+
+def test_need_with_residual_subject_preserved(parser):
+    # need fills the category, but a genuine distinctive subject still flows to
+    # content_terms (subject-preservation, SPEC §6); need tokens leave no residual.
+    intent = parser.parse("đói bụng muốn ăn bún chả")
+    assert intent.category == "Nhà hàng"
+    assert "bun" in intent.content_terms and "cha" in intent.content_terms
+    assert "doi" not in intent.residual_terms and "bung" not in intent.residual_terms
+
+
+# --- End-to-end: the parse fix must fix the ranked lineup (SPEC §6 hard-filter) ---
+
+def test_hunger_query_returns_only_hcmc_restaurants(pipe):
+    # Before the fix category=None floated a 24/7 gas station + a mall into the top-10.
+    # With category="Nhà hàng" + city the hard-filter leaves only TP.HCM restaurants.
+    _, results = pipe.search("minh doi bung qua, minh o tphcm", k=10)
+    assert results
+    top10 = results[:10]
+    assert all(r.poi.category == "Nhà hàng" for r in top10)
+    assert all(r.poi.city == "TP.HCM" for r in top10)
+    assert all(r.poi.category not in ("Trạm xăng", "Trung tâm thương mại", "ATM")
+               for r in top10)
+
+
+def test_gas_need_still_ranks_gas_stations(pipe):
+    # Reverse case must keep working: an explicit gas need ranks gas stations.
+    _, results = pipe.search("tìm chỗ đổ xăng ở quận 1", k=10)
+    assert results
+    assert all(r.poi.category == "Trạm xăng" for r in results)

@@ -45,7 +45,7 @@ tasco-semsearch/
 │   ├── rank.py                # signal functions + LinearRanker
 │   ├── tune.py                # weight search on tune split
 │   ├── explain.py             # signal-derived reasons (+ optional LLM phrasing)
-│   ├── search.py              # SearchEngine facade: query → ranked results
+│   ├── pipeline.py            # FullPipeline: query → parse → retrieve → re-rank → results
 │   ├── eval.py                # metrics + ablation runner
 │   └── api.py                 # FastAPI app
 ├── ui/                        # Next.js app
@@ -55,8 +55,8 @@ tasco-semsearch/
 │   ├── run_eval.py            # prints metrics table + writes reports/metrics.json
 │   ├── ablation.py            # bm25 / dense / hybrid / +rerank table
 │   ├── bench_latency.py       # p50/p95 over eval queries
-│   └── make_samples.py        # generates the ≥10 sample-query submission doc
-└── reports/                   # metrics.json, ablation.md, samples.md (committed)
+│   └── sample_queries.py      # generates the ≥10 sample-query submission doc
+└── reports/                   # metrics.json, ablation.md, sample-queries.md (committed)
 ```
 
 ## 2. Data contracts
@@ -132,11 +132,33 @@ subsets must be visible, not hidden inside the headline number.
   `canonicalize(token, vocab, max_edit) -> str | None`; the attribute/category/gazetteer matchers
   are thin callers passing their own vocab and **per-vocab** edit threshold. Do not build three
   divergent copies.
-- Typo canonicalizer (PRD FR-3): after folding + abbreviation expansion, query tokens
-  (len ≥ 4) that match no vocabulary entry are fuzzy-matched with edit distance ≤ 1 against
-  the closed vocabularies (category keywords, attribute taxonomy, gazetteer names) and
-  replaced by the canonical form ("yen tihn" → "yen tinh"). Query side only — documents
-  are clean. **Guard precision:** a big merged vocab means a valid 4+char word can sit within
+- Typo canonicalizer (PRD FR-3, implemented in `normalize.canonicalize` + `parse.Parser`):
+  after folding + abbreviation expansion, query tokens (len ≥ 4) that match no vocabulary
+  entry are fuzzy-matched against the closed vocabularies (category keywords, attribute
+  taxonomy, gazetteer names) and replaced by the canonical form ("yen tihn" → "yen tinh").
+  Query side only — documents are clean.
+  **Edit distance ≤ 1 means optimal-string-alignment (Damerau) distance, not plain
+  Levenshtein** — a single adjacent-character transposition counts as one edit alongside
+  substitution/insertion/deletion. This is a root-cause fix, not a cosmetic one: the FR-3
+  canonical example "yen tihn" → "yen tinh" is exactly a transposition (`t-i-h-n` →
+  `t-i-n-h`); plain Levenshtein scores that at distance 2, so it provably cannot correct it
+  at `max_edit=1`.
+  **Two-tier tie-break:** when a token sits within one edit of several vocab terms, a
+  transposition candidate is preferred over a substitution/indel candidate (same letters in
+  the wrong order is a higher-confidence typo signal than a changed letter) — a *unique*
+  transposition match wins even when substitution neighbours also exist (`tihn` → `tinh`
+  beats the substitution neighbour `tien`). Same-type collisions still refuse: two
+  transposition candidates, or two substitution candidates, leave the token uncorrected
+  (`banh` → {`binh`, `benh`, `hanh`} stays as typed).
+  **Two-vocabulary design:** corrections only ever land on the closed TARGET vocabularies —
+  category keywords, attribute taxonomy, and gazetteer names/districts/cities (~127 folded
+  tokens) — while a much broader KNOWN set decides what even counts as out-of-vocabulary in
+  the first place: TARGET plus every POI-name token, the stopword list, and the ~582
+  vendored Vietnamese common words (~782 folded tokens total). A token already in KNOWN is
+  never a correction candidate, so a distinctive subject word that happens to sit one edit
+  from a vocab term (a real POI-name token, a common Vietnamese word) is never hijacked into
+  an unrelated meaning — only genuinely out-of-vocabulary tokens are corrected, and only onto
+  TARGET. **Guard precision:** a big merged vocab means a valid 4+char word can sit within
   edit-distance 1 of an unrelated canonical term and be silently "corrected" into the wrong
   meaning, changing retrieval before it ever runs. Test: a set of known near-collisions must
   **not** be rewritten.
@@ -162,16 +184,46 @@ distinct cached vectors.
 
 - `BM25Index.search(text)` over folded tokens; `DenseIndex.search(text)` cosine over the matrix —
   both score the **full 111-doc corpus** (no top-k cut).
+- **BM25 document composition (`retrieve.lexical_doc`), previously unspecified.** A flat,
+  folded-token document per POI concatenates `name / brand / category / sub_category /
+  district / city / address / attributes / tags / description`, each field contributing its
+  text a fixed number of times — BM25F-lite via token repetition (`rank_bm25` reads the
+  repeats as raised term frequency; no custom BM25F scorer, no new dependency). **Field
+  weights: `attributes` ×2, every other field ×1.** The ablation OVERTURNED the intuitive
+  "boost identity fields" hypothesis: boosting `name`/`brand` ×3 REGRESSED official-tune
+  NDCG@5 (0.9592 → 0.942) via proper-name token collisions (a POI whose *name* happens to
+  match outranks the gold POI on category/attribute intent) — the full pipeline already
+  resolves identity via dense retrieval + subject corroboration (below), so lexical headroom
+  lives in the INTENT fields, not identity. Boosting `category` carried its own collision
+  regression (masked in the aggregate number, visible per-query); a lone `tags` boost hurt
+  the synth150 set (§6). `attributes ×2` was the only variant that improved monotonically
+  across all three measured corpora: tune@111 NDCG@5 +0.0016 (zero per-query regressions),
+  tune@1000 NDCG@5 +0.0213, synth150 NDCG@5 +0.0024 — the principled choice, since
+  attributes are the sponsor's controlled 10-term taxonomy rather than free-text
+  description/address. `district`/`city` are pinned at weight 1, never 0: dropping them (to
+  stop the "trà" ~ "Sơn Trà" fold collision) regressed tune NDCG@5 0.959 → 0.948 — location
+  overlap is a genuine lexical signal, and the drink/café fold-collision fix is instead
+  carried entirely by the parser's `CATEGORY_KEYWORDS` curation (§7) plus the category
+  signal, not by starving the lexical location field.
+- **BM25-side OOV canonicalization (`BM25Index._canonicalize_oov`).** Independent of the
+  parser's typo corrector (§3, which targets the closed category/attribute/gazetteer
+  vocabulary), the BM25 index snaps out-of-vocabulary query tokens (folded, len ≥ 4, absent
+  from the index's own term lexicon) onto their unique edit-1 lexicon neighbour before
+  scoring — the same `canonicalize()` primitive, applied against the index's own document
+  vocabulary instead of the closed vocab. Ambiguous tokens (multiple equidistant
+  neighbours) are left untouched; a fully in-vocabulary, clean query is scored
+  byte-identically to having no canonicalization step at all. Runs after abbreviation
+  expansion and before the district-drop de-pollution.
 - `rrf_fuse(runs, c=60)`: standard reciprocal-rank fusion, producing a fused **relevance score for
   every POI** — used to compute the `semantic` ranking signal, **not** as a candidate gate.
 - **Re-rank over hybrid, no destructive filtering (OV1 + G3-review).** Hybrid RRF relevance is
-  computed for the *entire corpus* (no top-k cut), then the 7-signal ranker RE-ORDERS all POIs using
-  that hybrid relevance as its `semantic` signal plus attributes/distance/rating/popularity/
-  open_now/review. Category and required-attributes are **soft signals, not AND-filters** — an
+  computed for the *entire corpus* (no top-k cut), then the 9-signal ranker RE-ORDERS all POIs using
+  that hybrid relevance as its `semantic` signal plus attributes/category/distance/rating/popularity/
+  open_now/review/price. Category and required-attributes are **soft signals, not AND-filters** — an
   earlier filter-then-rank design (with <3-survivor relaxation) was measured to *lower* recall
   (ablation: Recall@5 0.954→0.879) by deleting relevant POIs, so it was removed. Because
   `semantic == hybrid relevance`, all-weight-on-semantic reproduces hybrid exactly, so tuning makes
-  full ≥ hybrid by construction (ablation confirms: full NDCG@5 0.935 > hybrid 0.922 on tune).
+  full ≥ hybrid by construction (ablation confirms: full NDCG@5 0.959 > hybrid 0.922 on tune).
 - Test: `full (+re-rank)` beats `hybrid` on the ablation (NDCG@5, Recall@5).
 - **Empty-set backstop (eng-review C1, protects G5).** Relaxation loosens filters but cannot
   manufacture a result when retrieval itself is empty (emoji-only, gibberish, or fully
@@ -183,18 +235,21 @@ distinct cached vectors.
 
 ## 6. Ranking (`rank.py`)
 
-Seven signals, mapping 1:1 to the sponsor's `Ranking_Signals` sheet (PRD FR-7). All
-normalized to [0,1]:
+Nine signals: six map 1:1 to the sponsor's `Ranking_Signals` sheet, `business_attributes`
+also drives `open_now` (its time dimension), plus two of our own additions — `category` and
+`price` (PRD FR-7). All normalized to [0,1]:
 
 | Signal | Sponsor signal | Definition |
 |---|---|---|
 | `semantic` | relevance_score | **fixed, query-independent** transform of the fused RRF/cosine relevance — clamp+rescale a calibrated cosine band (e.g. `[0.2,0.8]→[0,1]`), **NOT per-query min-max**. Min-max within the candidate set forces the top result to 1.0 even on weak matches, inflating confidence, corrupting the explanation bars (a scored dimension), and making tuned weights depend on candidate-set composition (worse private-eval transfer). Test: two candidate sets with the same top POI yield the same semantic score (eng-review OV6) |
 | `attributes` | business_attributes | matched required+soft attrs / requested (taxonomy canonical, structured `attributes` field only) |
-| `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; 0.5 neutral if no anchor |
+| `category` | — (our addition) | 1.0 if the POI matches the parsed category, 0.0 on mismatch, 0.5 (neutral) when no category is parsed — a category-consistency prior so malls/gas stations don't outrank cafés on a "cà phê" query. A soft signal, not a hard filter |
+| `distance` | distance_score | `exp(-d_km / 3.0)` from anchor; diagnostic value 0.5 but weight excluded if no anchor |
 | `rating` | rating_score | Bayesian: `(v/(v+m))·R + (m/(v+m))·C`, C=global mean, scaled from [3.5,5]. **m is a low fixed prior (~20–50, not 200)** — on 111 POIs m=200 shrinks nearly every POI to the global mean and flattens the signal; verify the smoothed-rating spread in Phase 4 (eng-review TODO-2) |
 | `popularity` | popularity_score | popularity_score / 100 |
 | `open_now` | business_attributes (time) | 1 if open at the **injected reference time** / satisfies `open_after`, else 0.3 (0.5 if unknown). Time is injected as `now: datetime`, never wall-clock: eval passes a committed constant (e.g. Sat 14:00 Asia/Ho_Chi_Minh), the API passes real now — otherwise the same query scored at 10am vs 11pm produces different rankings and G3 stops being reproducible (eng-review A1) |
 | `review` | review_signal | fraction of requested needs (required+soft, folded) found in POI `tags` + `description` — distinct from the structured attributes field |
+| `price` | — (our addition) | affordability preference from `price_level` (1–4): a cheap intent (`rẻ`/`bình dân`) scores cheaper POIs high, an upscale intent (`sang`/`cao cấp`) inverts it; **neutral 0.5 when the query names no price** (constant across POIs → price-less rankings unchanged) and when `price_level` is unknown. Carries a **fixed 0.20 weight**, never eval-tuned (only 2/60 queries express price — NFR-6) |
 
 `freshness_score` is the sponsor's 7th listed signal but the dataset has no recency field —
 it is **not implemented**; the methodology write-up documents it as a production roadmap item
@@ -202,20 +257,32 @@ it is **not implemented**; the methodology write-up documents it as a production
 accounted for.
 
 `LinearRanker(weights).rank(intent, candidates)` → sorted `RankedResult` with per-signal
-breakdown retained. Initial weights: semantic .32, attributes .22, distance .15, rating .10,
-popularity .08, open .05, review .08.
+breakdown retained. Default weights (pre-tuning, `rank.py:DEFAULT_WEIGHTS`): semantic .30,
+attributes .25, category .20, distance .10, rating .10, popularity .05, open_now .10,
+review .10, price .20 (`price` is the fixed, un-tuned weight).
 
 **Tuning (`tune.py`):** split eval 40 tune / 20 test **stratified by difficulty** (fixed seed,
 split committed to repo). **Regularize selection (eng-review A3):** the test split is only 20
 queries — one query ≈ 5 pts of Recall — and three things are selected on the 40 tune queries
-(embedding provider, query-side composition, and the 7 weights), so over-fitting to tune noise is
-the real risk for private-eval transfer. Use a **coarse** weight grid, **cap** coordinate-ascent
+(embedding provider, query-side composition, and the 8 tuned weights — every signal except the
+fixed-weight `price`), so over-fitting to tune noise is the real risk for private-eval transfer. Use a **coarse** weight grid, **cap** coordinate-ascent
 passes, and **prefer round weights** when candidates tie within noise. Never evaluate the test
 split during tuning; `run_eval.py --split test` is the reported number. **Report it honestly:**
 every gate table shows a **bootstrap CI** on the test-split metric and **per-difficulty /
 per-category n** (Hard n≈8), so the headline is "0.80 ±ε, Hard n=8", not a bare point estimate.
 G3's 0.80/0.75 is an **internal target, not a sacred gate** — take a quick BM25+dense sanity read
 on the tune split before treating it as pass/fail, and never let it block UI start (see RUNBOOK).
+
+**Extended tuning pool (`scripts/tune.py --pool official|extended`, default `official`,
+landing alongside the Tier-1 changes above).** `official` is exactly the protocol above —
+coordinate ascent scored on the 40-query official tune split only. `extended` additionally
+folds in the 150-query synthetic eval set (`data/synth/eval_synth.json`, ground truth by
+construction, evaluated against the 1000-POI synthetic stress corpus,
+`data/synth/synth_dataset.xlsx` = the official 111 rows verbatim + 889 seeded distractors),
+and the objective becomes mean NDCG@5 over the combined 190 tune+synth pairs — a larger,
+more diverse sample for the coordinate ascent without touching held-out data. **This does
+not relax NFR-6/7:** neither pool option ever reads the official 20-query test split, which
+remains the sole source `run_eval.py --split test` (G3) reports from.
 
 ## 7. Query parsing (`parse.py`)
 
@@ -239,11 +306,34 @@ on the tune split before treating it as pass/fail, and never let it block UI sta
    folded text after abbreviation expansion; a new-name hit sets the anchor to the alias coords
    and canonicalizes `district`/`city` to the dataset's (old) naming, so downstream filters
    (§5) and outputs are untouched. Old names are dataset-native and pass through unchanged.
-2. **LLM parser (Bedrock Claude, structured output):** same QueryIntent JSON; prompt includes
-   taxonomy vocab + category list so outputs are closed-vocabulary. 800ms budget → on timeout or
-   schema failure, keep rule result. Merge policy: LLM fills fields the rules left null; rules win
-   on gazetteer-verified anchors.
-3. Cache parses by normalized query (dict + sqlite).
+2. **LLM parser (Bedrock Claude, OpenAI fallback, structured output — `llm_parse.py`):** same
+   QueryIntent JSON; prompt includes taxonomy vocab + category list so outputs are
+   closed-vocabulary. **Timeout: ~2s connect / 3s read, no retries** (`_CLAUDE_TIMEOUT`,
+   same discipline on the OpenAI fallback client) — the original "800ms budget" here and in
+   PRD FR-4 was aspirational and never matched the shipped client config; corrected to the
+   actual value. On timeout, network failure, or schema failure, keep the rule result (the
+   demo never stalls on the network — CLAUDE.md hard rule). Merge policy (`merge_intent`):
+   LLM fills fields the rules left null (category/attributes/price_pref/open_after only);
+   rules win on gazetteer-verified anchors — location (city/district/anchor) is entirely
+   rule-owned and never read from the LLM output, since a hallucinated location would
+   destructively collapse recall through the hard location filter (§5).
+   **Degradation gate (`SEMSEARCH_LLM_GATE=auto|always`, `config.DEFAULT_LLM_GATE="auto"`):**
+   in `auto` (default), the LLM is invoked only when the query shows a degradation signal —
+   no Vietnamese diacritic anywhere in the text, OR at least one folded token ≥4 chars absent
+   from the BM25 lexicon — a deterministic, pure function of the query text alone (no clock,
+   no network; NFR-5-safe by construction). A clean, fully in-vocabulary query skips the
+   ~1.7s call entirely and is byte-identical to the LLM-off path (no correction, no cache
+   entry). Measured on the official tune set: clean queries gain nothing from the LLM (rules
+   0.959 vs LLM 0.950 NDCG@5), while the whole measured win — up to +0.22 NDCG@5 at 1000
+   POIs — sits on degraded queries (stripped diacritics, typos, mixed language). `always`
+   forces the call on every query (useful when demoing the correction on an already-clean
+   query). **Known limitation:** a query that carries Vietnamese diacritics AND mixes in
+   common English words that already sit in the BM25 lexicon (e.g. an English word present
+   in POI tags) is gated OFF even though it is genuinely mixed-language — the gate has no
+   signal to catch that case short of an always-on LLM call.
+3. Cache parses on disk, keyed by (prompt version, provider, model id, raw query) — a JSON
+   file per parse under the embedding-cache root (`LLMCACHE_DIR`), not sqlite; only
+   successful (non-None) validated parses are cached, so a transient outage self-heals.
 
 ## 8. Explanations (`explain.py`)
 
@@ -282,7 +372,7 @@ a laptop CPU), plus a one-time multi-second model *load* if lazy (eng-review P1)
 (2) **pre-warm the query-embed cache** with all eval + rehearsed demo queries at boot so the demo
 stays snappy; (3) `bench_latency.py` reports **cold p95 AND warm p95 separately** — the honest
 number for a novel query, not just the warm one. Target: **warm p95 < 200ms** (G4); cold p95
-reported as-is. `search.py` also takes an injected `now: datetime` (A1) — eval passes the committed
+reported as-is. `pipeline.py`/`api.py` take an injected `now: datetime` (A1) — eval passes the committed
 constant, API passes real now.
 
 ## 10. UI (Next.js) — focused on the money shot (CEO review)
@@ -327,12 +417,12 @@ header.
 **Result card hierarchy (DD2 — signal breakdown).** Each card, top to bottom: rank number + POI
 name (largest text) → matched-attribute badges (✓ wifi, ✓ yên tĩnh) with Delight-4 highlighting →
 composite score + the **top-3 signals that drove this result's rank** as labeled colored bars (not
-all 7) → one-line Vietnamese reason → rating (`4.6★ · 1.560 đánh giá`) + distance. **Click/hover
-expands the full 7-signal breakdown** — the "audit any result" demo beat. Rationale: ~10 visible
-cards × 7 bars = 70 bars is illegible clutter at 5m; top-3 + expand serves explainability without
+all 9) → one-line Vietnamese reason → rating (`4.6★ · 1.560 đánh giá`) + distance. **Click/hover
+expands the full 9-signal breakdown** — the "audit any result" demo beat. Rationale: ~10 visible
+cards × 9 bars is illegible clutter at 5m; top-3 + expand serves explainability without
 the wall of color (subtraction default).
 
-**7-signal color system.** One fixed **colorblind-safe categorical palette** (e.g. Okabe-Ito or
+**9-signal color system.** One fixed **colorblind-safe categorical palette** (e.g. Okabe-Ito or
 ColorBrewer Set2), one hue per signal, reused everywhere the signal appears (card bars, expanded
 breakdown). Defined as CSS variables (`--signal-semantic`, `--signal-distance`, …). Bars carry a
 text label too (color is never the only channel). Same hue = same signal across both columns so the
@@ -345,7 +435,7 @@ comparison reads.
 | Loading | Per-column skeleton cards (not a spinner); latency badge shows "…"; chips stay tappable |
 | Empty (`meta.source="fallback"`, C1 backstop) | Honest line: "Không có kết quả khớp — đây là các địa điểm phổ biến gần bạn" + the fallback results; never a bare "No results" |
 | Error (API 5xx/timeout) | Inline card in the results area: "Máy chủ đang bận, thử lại" + a retry button; the other column and chips stay usable |
-| No anchor (location query, gazetteer miss) | Map panel stays collapsed; a subtle note "Không xác định được vị trí neo" on affected cards; distance signal renders neutral, not blank |
+| No anchor (location query, gazetteer miss) | Map uses its labeled display-only default; no coordinates enter ranking and the distance weight is inactive |
 | Partial (semantic ready, map tiles slow) | Results render immediately; map panel shows its own loading state independently |
 
 **Typography.** A real Vietnamese-first typeface with full diacritic coverage — **Be Vietnam Pro**
@@ -381,7 +471,7 @@ modules that *are* the product must be explicitly covered:
   and old-vs-new-admin-name pair cases ("q1 tphcm" ≡ "phường sài gòn" → same anchor/district).
 - `tests/test_retrieve.py` — rrf_fuse ordering; hard-filter correctness; relaxation branch
   (<3 → demote); **a relevant POI at low fusion rank still surfaces** (OV1).
-- `tests/test_rank.py` — each of the 7 signals in isolation: Bayesian rating (hand-computed
+- `tests/test_rank.py` — each of the 9 signals in isolation: Bayesian rating (hand-computed
   fixture), distance decay + neutral-no-anchor, attribute match, **semantic fixed-transform
   invariance** (same top POI across two candidate sets → same score, OV6), and **open_now
   determinism** (identical rankings across two injected `now` times, A1); LinearRanker breakdown
@@ -391,8 +481,9 @@ modules that *are* the product must be explicitly covered:
   in the source facts (FR-8).
 - `tests/test_embeddings.py` — provider+model_id cache key: same text under two providers →
   two distinct vectors; loader refuses a doc-matrix/provider mismatch (A2).
-- `tests/test_search.py` — empty-candidate backstop returns ≥1 result for each G5 adversarial input,
-  flagged `meta.source="fallback"` (C1).
+- `tests/test_api_contract.py` / `tests/test_robustness.py` — empty-candidate backstop returns ≥1
+  result for each G5 adversarial input, flagged `meta.source="fallback"` (C1). (The backstop lives
+  in the API layer over `pipeline.py`; the legacy `search.py` facade was removed as dead code.)
 - `tests/test_integrity.py` — **NFR-6 guard: tune.py and the committed weights never read the test
   split.** The pitch's entire credibility rests on this; it must be a test, not a promise.
 - `tests/test_api_contract.py` — response shape strictly matches PDF PlaceResult; error
@@ -407,6 +498,6 @@ modules that *are* the product must be explicitly covered:
 
 ## 12. Submission artifacts (generated, not hand-written)
 
-`make_samples.py` → `reports/samples.md`: 12 diverse queries (cover every `query_category` +
-difficulty) with top-5 results, scores, reasons. `ablation.py` → `reports/ablation.md`.
+`sample_queries.py` → `reports/sample-queries.md`: 14 diverse queries (cover every `query_category`
++ difficulty) with top-5 results, scores, reasons. `ablation.py` → `reports/ablation.md`.
 Deck pulls straight from these.

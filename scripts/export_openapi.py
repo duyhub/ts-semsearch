@@ -14,7 +14,7 @@ from semsearch.api import create_app  # noqa: E402
 
 
 def main() -> None:
-    app = create_app(prewarm=False)
+    app = create_app(prewarm=False, mode="local")
     spec = app.openapi()
     out = Path("openapi.json")
     out.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasco Semantic Search — Pipeline & Core Calculations</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --gold-soft: rgba(201,164,92,0.14);
+    --blue: #5B7E96; --blue-soft: rgba(91,126,150,0.12);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #8B8A82;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.15);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --gold-soft: rgba(212,179,111,0.16);
+    --blue: #7FA3BC; --blue-soft: rgba(127,163,188,0.16);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--body); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; display: flex; flex-direction: column;
+    overflow: auto; min-height: 100vh;
+  }
+
+  /* ── top bar ─────────────────────────────── */
+  .bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 11px 20px; border-bottom: 1px solid var(--line-soft); flex: none;
+  }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 18px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em;
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  #themeToggle {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  #themeToggle:hover { color: var(--ink); border-color: var(--muted); }
+
+  /* ── stage ───────────────────────────────── */
+  /* flex:1 fills a normal full-height window; the min-height floor + body
+     scroll guarantee the diagram still renders in short/embedded containers. */
+  .stage { flex: 1 1 auto; position: relative; min-height: 640px; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* zones */
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .zone .zsub { font-family: var(--mono); font-size: 10px; fill: var(--muted); opacity: 0.72; }
+
+  /* nodes */
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; transition: stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2.4; }
+  .node .t  { font-family: var(--sans); font-size: 14px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m  { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+  .node .f  { font-family: var(--mono); font-size: 11px; fill: var(--clay); pointer-events: none; }
+  .node .k  { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.store rect { fill: var(--surface2); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.sig rect { fill: var(--blue-soft); stroke: var(--blue); }
+  .node.out rect { fill: var(--gold-soft); stroke: var(--gold); }
+  .node.ext rect { stroke-dasharray: 6 3; }
+
+  /* edges */
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; }
+  .edge.thick { stroke-width: 2.4; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+
+  /* flow highlighting */
+  .stage.flowing .edge { opacity: 0.11; }
+  .stage.flowing .elbl { opacity: 0.11; }
+  .stage.flowing .node { opacity: 0.26; }
+  .stage.flowing .zone { opacity: 0.42; }
+  .stage.flowing .edge.lit {
+    opacity: 1; stroke: var(--clay); marker-end: url(#a-clay);
+    stroke-dasharray: 7 5; animation: march 0.9s linear infinite;
+  }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+
+  .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .badge circle { fill: var(--clay); }
+  .badge text { fill: var(--bg); }
+  .stage:not(.flowing) .badge { display: none; }
+
+  /* ── floating cards ──────────────────────── */
+  .card {
+    position: absolute;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  }
+  #detail { right: 16px; bottom: 16px; width: 366px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; }
+  #detail .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 9px; }
+  #detail .formula {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink); line-height: 1.5;
+    background: var(--surface2); border: 1px solid var(--line-soft); border-radius: 8px;
+    padding: 9px 11px; margin-bottom: 9px; white-space: pre-wrap; word-break: break-word;
+  }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail p code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 468px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--clay); margin-bottom: 6px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.55; }
+  .src { position: absolute; top: 10px; right: 16px; font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.8; }
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .stage { min-height: 78vh; }
+    #detail { position: static; width: auto; margin: 10px 16px; }
+    #flowcap { position: static; margin: 0 16px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>Tasco Semantic Search — how a query becomes ranked answers</h1>
+    <div class="sub">understand → retrieve → 9-signal rank → constrain → serve · click any box for the formula</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">Everything</button>
+    <button class="chip" data-flow="understand">Understand</button>
+    <button class="chip" data-flow="retrieve">Retrieve</button>
+    <button class="chip" data-flow="rank">Rank</button>
+    <button class="chip" data-flow="constrain">Constrain</button>
+    <button class="chip" data-flow="explain">Explain</button>
+    <button class="chip" data-flow="keyword">Keyword lane</button>
+  </div>
+  <button id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg viewBox="0 0 1640 1060" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Semantic search pipeline architecture and core calculations">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/>
+    </marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/>
+    </marker>
+  </defs>
+
+  <!-- ── zones ─────────────────────────────── -->
+  <g class="zone">
+    <rect x="26" y="82" width="192" height="150" rx="16"/>
+    <text class="ztitle" x="44" y="110">Query</text>
+    <text class="zsub" x="44" y="127">raw Vietnamese</text>
+  </g>
+  <g class="zone">
+    <rect x="244" y="82" width="300" height="432" rx="16"/>
+    <text class="ztitle" x="262" y="110">Understand</text>
+    <text class="zsub" x="262" y="127">offline · rule-based</text>
+  </g>
+  <g class="zone">
+    <rect x="570" y="82" width="322" height="432" rx="16"/>
+    <text class="ztitle" x="588" y="110">Retrieve</text>
+    <text class="zsub" x="588" y="127">full corpus · no top-k cut</text>
+  </g>
+  <g class="zone">
+    <rect x="918" y="82" width="272" height="216" rx="16"/>
+    <text class="ztitle" x="936" y="110">Rank</text>
+    <text class="zsub" x="936" y="127">interpretable linear</text>
+  </g>
+  <g class="zone">
+    <rect x="918" y="322" width="272" height="286" rx="16"/>
+    <text class="ztitle" x="936" y="350">Constrain</text>
+    <text class="zsub" x="936" y="367">hard filters · relax to non-empty</text>
+  </g>
+  <g class="zone">
+    <rect x="1216" y="82" width="398" height="526" rx="16"/>
+    <text class="ztitle" x="1234" y="110">Serve</text>
+    <text class="zsub" x="1234" y="127">Tasco /v1 contract</text>
+  </g>
+  <g class="zone">
+    <rect x="26" y="636" width="192" height="392" rx="16"/>
+    <text class="ztitle" x="44" y="664">Corpus</text>
+    <text class="zsub" x="44" y="681">source of truth</text>
+  </g>
+  <g class="zone">
+    <rect x="244" y="636" width="946" height="392" rx="16"/>
+    <text class="ztitle" x="262" y="664">9 ranking signals</text>
+    <text class="zsub" x="262" y="681">each ∈ [0,1] · 0.5 = neutral (leaves order unchanged) · 6 map 1:1 to sponsor signals + category + price</text>
+  </g>
+
+  <!-- ── edges ─────────────────────────────── -->
+  <path class="edge" id="e-q-norm"     d="M218,150 L244,150"/>
+  <path class="edge" id="e-norm-parse" d="M394,236 L394,262"/>
+  <path class="edge" id="e-q-bm25"     d="M180,190 C 300,224 470,178 570,178"/>
+  <path class="edge" id="e-q-dense"    d="M180,206 C 320,262 470,300 570,300"/>
+  <path class="edge" id="e-bm25-rrf"   d="M690,222 C 660,300 662,338 680,394"/>
+  <path class="edge" id="e-dense-rrf"  d="M708,340 C 726,360 720,378 712,394"/>
+  <path class="edge dash" id="e-mat-dense" d="M708,414 L708,354"/>
+  <path class="edge" id="e-parse-bm25" d="M544,290 C 556,250 556,206 570,190"/>
+  <path class="edge thick" id="e-rrf-score" d="M880,432 C 990,430 918,236 936,214"/>
+  <path class="edge" id="e-parse-sig"  d="M420,506 C 420,560 430,600 440,636"/>
+  <path class="edge dash" id="e-rrf-sem" d="M654,502 C 560,560 460,610 388,690"/>
+  <path class="edge dash" id="e-pois-sig" d="M218,720 L244,720"/>
+  <path class="edge dash" id="e-wt-score" d="M1054,262 L1054,236"/>
+  <path class="edge thick" id="e-sig-score" d="M760,636 C 900,540 980,420 1010,300"/>
+  <path class="edge" id="e-score-constr" d="M1054,298 L1054,378"/>
+  <path class="edge" id="e-constr-anchor" d="M1054,470 L1054,494"/>
+  <path class="edge dash" id="e-dense-constr" d="M834,346 C 900,360 900,400 918,418"/>
+  <path class="edge" id="e-anchor-api"  d="M1190,520 C 1250,520 1250,240 1216,208"/>
+  <path class="edge" id="e-api-explain" d="M1394,250 L1394,290"/>
+  <path class="edge dash" id="e-anchor-bk" d="M1190,548 C 1240,560 1250,470 1216,442"/>
+  <path class="edge" id="e-api-resp"    d="M1300,250 C 1290,360 1290,420 1300,494"/>
+  <path class="edge" id="e-explain-resp" d="M1420,386 C 1440,430 1440,460 1420,494"/>
+
+  <!-- edge labels -->
+  <text class="elbl" data-e="e-q-bm25" x="300" y="176">tokens</text>
+  <text class="elbl" data-e="e-q-dense" x="300" y="286">tokens</text>
+  <text class="elbl" data-e="e-parse-bm25" x="470" y="232" text-anchor="end">drop district toks</text>
+  <text class="elbl" data-e="e-rrf-score" x="905" y="330" text-anchor="middle">relevance → semantic</text>
+  <text class="elbl" data-e="e-parse-sig" x="430" y="576">intent</text>
+  <text class="elbl" data-e="e-rrf-sem" x="470" y="600" text-anchor="end">seeds semantic</text>
+  <text class="elbl" data-e="e-sig-score" x="905" y="470" text-anchor="middle">Σ wₖ·sₖ ⁄ Σ wₖ</text>
+  <text class="elbl" data-e="e-wt-score" x="1064" y="252">weights.json</text>
+  <text class="elbl" data-e="e-score-constr" x="1064" y="342">ranked corpus</text>
+  <text class="elbl" data-e="e-dense-constr" x="854" y="392">corroborates subject</text>
+  <text class="elbl" data-e="e-anchor-api" x="1244" y="360" text-anchor="end">top-k</text>
+  <text class="elbl" data-e="e-anchor-bk" x="1244" y="470" text-anchor="end">if empty</text>
+  <text class="elbl" data-e="e-pois-sig" x="222" y="712">facts</text>
+
+  <!-- ── nodes: query ──────────────────────── -->
+  <g class="node" data-k="query">
+    <rect x="42" y="140" width="160" height="76" rx="10"/>
+    <text class="t" x="60" y="168">User query</text>
+    <text class="m" x="60" y="188">"quán cà phê yên</text>
+    <text class="m" x="60" y="203">tĩnh ở quận 1"</text>
+  </g>
+
+  <!-- ── nodes: understand ─────────────────── -->
+  <g class="node" data-k="normalize">
+    <rect x="262" y="140" width="264" height="96" rx="10"/>
+    <text class="t" x="282" y="168">Normalize</text>
+    <text class="m" x="282" y="189">fold: NFD · đ→d · lowercase</text>
+    <text class="m" x="282" y="206">expand: abbrev + q1→"quận 1"</text>
+    <text class="m" x="282" y="223">diacritics kept for display</text>
+  </g>
+  <g class="node" data-k="parse">
+    <rect x="262" y="262" width="264" height="240" rx="10"/>
+    <text class="t" x="282" y="290">Parse intent</text>
+    <text class="k" x="282" y="309">rule-based · closed vocab</text>
+    <text class="m" x="282" y="333">category · longest keyword</text>
+    <text class="m" x="282" y="352">required_attrs · 10-taxonomy</text>
+    <text class="m" x="282" y="371">anchor · gazetteer</text>
+    <text class="m" x="282" y="390">district · token-boundary</text>
+    <text class="m" x="282" y="409">price_pref · cheap|expensive</text>
+    <text class="m" x="282" y="428">open_after · "mở khuya"</text>
+    <text class="m" x="282" y="447">subject terms · df ≤ 2, len ≥ 3</text>
+    <text class="m" x="282" y="466">residual · blocks category</text>
+    <text class="m" x="282" y="485">LLM parse layers on (fallback)</text>
+  </g>
+
+  <!-- ── nodes: retrieve ───────────────────── -->
+  <g class="node" data-k="bm25">
+    <rect x="588" y="140" width="286" height="82" rx="10"/>
+    <text class="t" x="608" y="168">BM25 (lexical)</text>
+    <text class="m" x="608" y="189">BM25Okapi · folded tokens</text>
+    <text class="m" x="608" y="206">name/brand/cat/addr/attrs/tags</text>
+  </g>
+  <g class="node" data-k="dense">
+    <rect x="588" y="248" width="286" height="90" rx="10"/>
+    <text class="t" x="608" y="276">Dense (semantic)</text>
+    <text class="m" x="608" y="297">bge-m3 · 1024-d · L2-norm</text>
+    <text class="m" x="608" y="314">cosine = matrix @ q</text>
+  </g>
+  <g class="node store" data-k="matrix">
+    <rect x="588" y="414" width="286" height="46" rx="10"/>
+    <text class="t" x="608" y="435">Embedding matrix</text>
+    <text class="m" x="608" y="452">cached · provider-stamped (A2)</text>
+  </g>
+  <g class="node" data-k="rrf">
+    <rect x="588" y="360" width="286" height="52" rx="10"/>
+    <text class="t" x="608" y="384">RRF fuse → relevance</text>
+    <text class="f" x="608" y="402">Σ 1/(60+rank) · norm to [0,1]</text>
+  </g>
+
+  <!-- ── nodes: rank ───────────────────────── -->
+  <g class="node gate" data-k="score">
+    <rect x="936" y="140" width="236" height="96" rx="10"/>
+    <text class="t" x="956" y="170">Linear score</text>
+    <text class="f" x="956" y="192">s = Σ wₖ·sₖ ⁄ Σ wₖ</text>
+    <text class="m" x="956" y="212">weighted sum of 9 signals</text>
+    <text class="m" x="956" y="228">sort full corpus by s</text>
+  </g>
+
+  <!-- ── nodes: constrain ──────────────────── -->
+  <g class="node" data-k="constraint">
+    <rect x="936" y="378" width="236" height="92" rx="10"/>
+    <text class="t" x="956" y="406">Hard constraints</text>
+    <text class="m" x="956" y="427">location · subject · category</text>
+    <text class="m" x="956" y="444">AND-filter, post-rank</text>
+    <text class="m" x="956" y="461">relax most-specific → non-empty</text>
+  </g>
+  <g class="node" data-k="anchor">
+    <rect x="936" y="494" width="236" height="90" rx="10"/>
+    <text class="t" x="956" y="522">Anchor gate</text>
+    <text class="m" x="956" y="543">near ≤30 km float to top</text>
+    <text class="m" x="956" y="560">relax → 150 km; skip if &lt;3</text>
+    <text class="m" x="956" y="577">recall preserved (far → tail)</text>
+  </g>
+
+  <!-- ── nodes: serve ──────────────────────── -->
+  <g class="node" data-k="api">
+    <rect x="1238" y="140" width="356" height="106" rx="10"/>
+    <text class="t" x="1258" y="170">FastAPI · /v1/search</text>
+    <text class="k" x="1258" y="189">contract-exact PlaceResult[]</text>
+    <text class="m" x="1258" y="211">/v1/semantic-search adds</text>
+    <text class="m" x="1258" y="228">breakdown + reasons + intent</text>
+  </g>
+  <g class="node" data-k="explain">
+    <rect x="1238" y="290" width="356" height="96" rx="10"/>
+    <text class="t" x="1258" y="318">Explain</text>
+    <text class="m" x="1258" y="339">reasons from matched facts only</text>
+    <text class="m" x="1258" y="356">validate_reasons rejects</text>
+    <text class="m" x="1258" y="373">any unbacked attr / number</text>
+  </g>
+  <g class="node ext" data-k="backstop">
+    <rect x="1238" y="404" width="356" height="70" rx="10"/>
+    <text class="t" x="1258" y="432">C1 backstop</text>
+    <text class="m" x="1258" y="453">empty → popularity top-k · source="fallback"</text>
+  </g>
+  <g class="node out" data-k="response">
+    <rect x="1238" y="494" width="356" height="96" rx="10"/>
+    <text class="t" x="1258" y="522">Response</text>
+    <text class="m" x="1258" y="543">id "poi:C001" · diacritics kept</text>
+    <text class="m" x="1258" y="560">score · distanceMeters · tags</text>
+    <text class="m" x="1258" y="577">warm p95 ≈ 1 ms · deterministic</text>
+  </g>
+
+  <!-- ── nodes: corpus ─────────────────────── -->
+  <g class="node store" data-k="pois">
+    <rect x="42" y="694" width="160" height="86" rx="10"/>
+    <text class="t" x="60" y="722">111 POIs</text>
+    <text class="m" x="60" y="742">xlsx · typed frames</text>
+    <text class="m" x="60" y="759">feeds every stage</text>
+  </g>
+
+  <!-- ── nodes: 9 signals ──────────────────── -->
+  <g class="node sig" data-k="s-semantic">
+    <rect x="260" y="700" width="286" height="90" rx="10"/>
+    <text class="t" x="278" y="727">semantic</text>
+    <text class="f" x="278" y="748">clamp01(relevance)</text>
+    <text class="m" x="278" y="768">hybrid RRF ⇒ full ≥ hybrid</text>
+    <text class="m" x="278" y="783">tuned weight 0.50</text>
+  </g>
+  <g class="node sig" data-k="s-attributes">
+    <rect x="562" y="700" width="286" height="90" rx="10"/>
+    <text class="t" x="580" y="727">attributes</text>
+    <text class="f" x="580" y="748">|req∩A| ⁄ |req|</text>
+    <text class="m" x="580" y="768">10-taxonomy match · 0.5 if none</text>
+    <text class="m" x="580" y="783">tuned weight 0.05</text>
+  </g>
+  <g class="node sig" data-k="s-category">
+    <rect x="864" y="700" width="286" height="90" rx="10"/>
+    <text class="t" x="882" y="727">category</text>
+    <text class="f" x="882" y="748">1 match · 0 miss · 0.5 none</text>
+    <text class="m" x="882" y="768">soft prior (hard filter too)</text>
+    <text class="m" x="882" y="783">tuned weight 0.05</text>
+  </g>
+  <g class="node sig" data-k="s-distance">
+    <rect x="260" y="804" width="286" height="90" rx="10"/>
+    <text class="t" x="278" y="831">distance</text>
+    <text class="f" x="278" y="852">exp(−d ⁄ 3km)</text>
+    <text class="m" x="278" y="872">haversine to anchor · 0.5 none</text>
+    <text class="m" x="278" y="887">tuned weight 0.30</text>
+  </g>
+  <g class="node sig" data-k="s-rating">
+    <rect x="562" y="804" width="286" height="90" rx="10"/>
+    <text class="t" x="580" y="831">rating</text>
+    <text class="f" x="580" y="852">Bayesian shrink · m=30</text>
+    <text class="m" x="580" y="872">band 3.5–5.0 → [0,1]</text>
+    <text class="m" x="580" y="887">tuned weight 0.05</text>
+  </g>
+  <g class="node sig" data-k="s-popularity">
+    <rect x="864" y="804" width="286" height="90" rx="10"/>
+    <text class="t" x="882" y="831">popularity</text>
+    <text class="f" x="882" y="852">pop ⁄ 100</text>
+    <text class="m" x="882" y="872">query-independent prior</text>
+    <text class="m" x="882" y="887">tuned weight 0.20</text>
+  </g>
+  <g class="node sig" data-k="s-opennow">
+    <rect x="260" y="908" width="286" height="90" rx="10"/>
+    <text class="t" x="278" y="935">open_now</text>
+    <text class="f" x="278" y="956">1 open · 0.3 closed · 0.5 unk</text>
+    <text class="m" x="278" y="976">injected clock · overnight wrap</text>
+    <text class="m" x="278" y="991">tuned weight 0.05</text>
+  </g>
+  <g class="node sig" data-k="s-review">
+    <rect x="562" y="908" width="286" height="90" rx="10"/>
+    <text class="t" x="580" y="935">review / tags</text>
+    <text class="f" x="580" y="956">|q∩tokens| ⁄ |q|</text>
+    <text class="m" x="580" y="976">tags + description overlap</text>
+    <text class="m" x="580" y="991">tuned weight 0.10</text>
+  </g>
+  <g class="node sig" data-k="s-price">
+    <rect x="864" y="908" width="286" height="90" rx="10"/>
+    <text class="t" x="882" y="935">price</text>
+    <text class="f" x="882" y="956">cheap: 1−norm · exp: norm</text>
+    <text class="m" x="882" y="976">bidirectional · 0.5 if no intent</text>
+    <text class="m" x="882" y="991">fixed weight 0.20 (not tuned)</text>
+  </g>
+
+  <!-- flow badges -->
+  <g class="badge" id="badges"></g>
+</svg>
+
+  <div class="src">src/semsearch/*.py · SPEC §5–9 · reports/metrics.md</div>
+
+  <div class="card" id="flowcap">
+    <div class="fname" id="f-name"></div>
+    <ol id="f-steps"></ol>
+  </div>
+
+  <div class="card" id="detail">
+    <h3 id="d-title">Click any box</h3>
+    <div class="meta" id="d-meta">or a chip above to trace a path</div>
+    <div class="formula" id="d-formula" style="display:none"></div>
+    <p id="d-body">Every node is clickable and shows its exact calculation. The chips light up the sequence that produces an answer: <b>Understand</b> the Vietnamese query, <b>Retrieve</b> the whole corpus two ways, <b>Rank</b> by a weighted sum of 9 signals, <b>Constrain</b> to what the query demanded, then <b>Serve</b> the Tasco contract with faithful reasons.</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  query: { t:"User query", m:"raw Vietnamese · search by need", f:"",
+    b:"Users search by <b>intent</b>, not place name — \"quán cà phê yên tĩnh để làm việc\" (quiet café to work from). Keyword search misses this. Diacritics, typos, abbreviations (q1, hcm), English, and coordinates all arrive here." },
+  normalize: { t:"Normalize", m:"normalize.py · index-side only",
+    f:"fold(s): NFD → strip combining marks → đ→d\n         → lowercase → keep [a-z0-9/] → collapse ws\nexpand_query: bigram/unigram abbrev,\n         q1 → \"quan 1\"",
+    b:"Folding + expansion happen <b>only inside indexes and matchers</b>; raw diacritics are preserved for every API/UI field (NFR-4). \"24/7\" survives as one token. A single fuzzy <code>canonicalize()</code> (edit distance ≤ 1, unambiguous only) maps degraded input onto the closed vocabularies." },
+  parse: { t:"Parse intent", m:"parse.py · rule-based, closed to dataset vocab",
+    f:"category  ← longest matching keyword\nrequired_attrs ← 10-attribute taxonomy\nanchor    ← gazetteer(landmark/district/POI)\nprice_pref ← cheap | expensive\nsubject   ← residual tokens with df ≤ 2, len ≥ 3",
+    b:"Turns the query into a structured <b>QueryIntent</b> against the dataset's own vocabularies. Anything the parse can't explain is <i>residual</i>: its rare, POI-naming tokens become a <b>subject</b> filter, and its presence blocks the category hard-filter (guards mis-parses). The LLM parser layers on top; rules run unconditionally so there's always a fallback." },
+  bm25: { t:"BM25 — lexical retrieval", m:"retrieve.py · rank_bm25.BM25Okapi",
+    f:"score over folded tokens of\n  name · brand · category · sub · district\n  · city · address · attributes · tags · description\nfull corpus, no top-k cut (OV1)\nlifted district tokens dropped from query",
+    b:"The exact-match backbone. Scores <b>every one of the 111 POIs</b> (never pre-cuts the candidate set). A lifted district reference (\"quận 1\") is dropped from the BM25 query so it stops inflating every POI that carries it in a field — that's the quán/quận fold-collision fix. Location is carried by the distance signal, not lexical overlap." },
+  dense: { t:"Dense — semantic retrieval", m:"embeddings.py · BAAI/bge-m3",
+    f:"q  = embed(query)          (1024-d, L2-normalized)\nsims = matrix @ q          (cosine, one matvec)\nrank by descending cosine",
+    b:"Understands meaning, not words — \"nơi hẹn hò\" finds romantic spots without the word appearing. bge-m3 is the local, offline-safe primary; Bedrock (cohere/titan) is a selectable, measured provider, never required. Vectors are L2-normalized so cosine is a single matrix-vector product." },
+  matrix: { t:"Embedding matrix", m:"embeddings.py · data/derived (gitignored)",
+    f:"key = provider:model_id:text\nmanifest asserts provider / model / dim / POI-order",
+    b:"POI docs are embedded once and cached to disk, stamped with a manifest the loader checks (A2 guard). bge-m3, cohere-v3 and titan-v2 are all 1024-d, so a silent provider mix-up would return <b>noise, not an error</b> — the manifest refuses the mismatch instead. Query vectors are cached too, so repeat queries are an <code>np.load</code>." },
+  rrf: { t:"RRF fusion → relevance", m:"retrieve.py · reciprocal-rank fusion",
+    f:"score(d) = Σ_r 1 / (c + rank_r(d)),  c = 60\nrelevance = min(1, score / RRF_MAX)\nRRF_MAX  = 2 / (c + 1)   (rank 1 in both lists)",
+    b:"Fuses the BM25 and dense rankings by <b>rank, not raw score</b>, so the two incomparable scales combine cleanly. The fused score is normalized to [0,1] by a <b>fixed</b> max (OV6 — not per-query min-max) and becomes the <code>semantic</code> ranking signal. Because semantic == hybrid relevance, all-weight-on-semantic reproduces hybrid exactly — so tuning makes the full ranker ≥ hybrid <b>by construction</b>." },
+  score: { t:"Linear score", m:"rank.py · LinearRanker",
+    f:"s(poi) = ( Σ_k  w_k · signal_k(poi) ) / Σ_k w_k\nsort the full corpus by s, descending",
+    b:"The interpretable core: a <b>weighted average of 9 signals</b>, each in [0,1]. No black box — every result keeps its per-signal breakdown for the explanation. Weights are tuned by regularized coordinate ascent on the <b>tune split only</b>; a signal at neutral 0.5 is constant across POIs and can't change the order, so absent-intent signals stay out of the way." },
+  constraint: { t:"Hard constraints", m:"pipeline.py · post-rank, relaxing",
+    f:"filters = [location?, subject?, category?]\nkeep = ranked ∩ all(active filters)\nwhile keep empty: drop most-specific filter\nsubject fires only if DENSE corroborates the term",
+    b:"Re-ranking never deletes recall, but a query that says \"Quận 1\" must not return Quận 3. Constraints apply <b>after</b> ranking and <b>relax most-specific-first</b> until the result is non-empty (G5 — never empty for a valid query). The subject filter only fires for a distinctive term the <b>dense retriever corroborates</b> (a real POI with that term sits in the dense top-10) — killing coincidental proper-name collisions like \"nhất\" in \"Thống Nhất\"." },
+  anchor: { t:"Anchor gate", m:"pipeline.py · location queries",
+    f:"for radius in (30 km, 150 km):\n  hits = POIs within radius of anchor\n  if |hits| ≥ 3: return hits ++ rest\nelse: keep pure score order",
+    b:"When the query resolves an explicit location, \"gần X\" must actually mean near X: near-anchor POIs float to the top, far ones drop to the tail (recall preserved, never starved). The radius relaxes if too few survive; if even the widest yields under 3, the gate is skipped rather than return a thin result." },
+  api: { t:"FastAPI · Tasco /v1 contract", m:"api.py · integration-ready",
+    f:"/v1/search           → PlaceResult[] (contract-exact)\n/v1/semantic-search  → + breakdown + reasons + intent\n/v1/search?engine=keyword → BM25-only lane",
+    b:"Matches the sponsor's published contract <b>exactly</b> — an explicit judging ask. Aliases <code>/search</code>, <code>/v1/geocode-search</code>. POI ids get the <code>poi:</code> prefix on output only; every field keeps diacritics; the clock is fixed so identical requests return identical results (NFR-5). The keyword lane powers the demo's side-by-side money shot." },
+  explain: { t:"Explain — faithful reasons", m:"explain.py · FR-8 guard",
+    f:"reasons ← matched attrs · distance to anchor\n           · rating+reviews · opening hours\nvalidate_reasons(reasons, poi):\n   every attr must be on the POI\n   every number must equal the POI's",
+    b:"Every reason is <b>generated from a verifiable fact</b>, never asserted. A validator re-checks the produced Vietnamese strings against the POI and flags any attribute or number not backed by the data — so a hallucinated reason <b>can't ship</b>. A test asserts the validator rejects fabrications." },
+  backstop: { t:"C1 backstop", m:"api.py · robustness (G5)",
+    f:"if picked is empty:\n   top = POIs sorted by popularity [:limit]\n   source = \"fallback\"",
+    b:"The last line of defense: emoji, empty, pure-English, unknown-city, coordinate-only — every adversarial input returns <b>200 with ≥1 result</b>. When filters leave nothing, the API returns the most popular POIs and honestly stamps <code>source=\"fallback\"</code>. The demo can never show an empty screen." },
+  response: { t:"Response", m:"api.py · deterministic, offline",
+    f:"warm p95 ≈ 1 ms  ·  no network on the hot path",
+    b:"The served answer: stable <code>poi:</code> ids, WGS84 coordinates, diacritics preserved, per-signal <code>breakdown</code>, <code>reasons[]</code>, and the parsed <code>intent</code> echo. Ranking runs entirely local — the embedding model and matrix are cached, so a query touches no network. That's the G4 warm p95 ≈ 1 ms." },
+  pois: { t:"111 POIs", m:"data.py · the ground truth",
+    f:"name·brand·category·city·district·lat·lon\nrating·review_count·popularity·price·hours\n·-separated attributes · tags · description",
+    b:"The sponsor dataset, loaded into typed frames — strict, explicit parsing. It feeds the parser's vocabularies, both retrieval indexes, and every POI-derived ranking signal. <code>content_tokens</code> (folded name+brand) drives the subject filter and its corpus document-frequency." },
+  "s-semantic": { t:"semantic signal", m:"rank.py · weight 0.50 (tuned)",
+    f:"semantic = clamp01(relevance)\nrelevance = hybrid RRF, normalized",
+    b:"The dominant signal, seeded directly from the <b>hybrid RRF relevance</b> (not a raw cosine). This is what makes the full ranker provably ≥ hybrid: pour all weight onto semantic and you get hybrid back exactly." },
+  "s-attributes": { t:"attributes signal", m:"rank.py · weight 0.05 (tuned)",
+    f:"denom = |req| + 0.5·|soft|\nscore = (|req∩A| + 0.5·|soft∩A|) / denom\n0.5 (neutral) when the query has no attributes",
+    b:"Matches the query's parsed constraints against the POI's structured attributes from the fixed <b>10-attribute taxonomy</b> (wifi, yên tĩnh, phù hợp làm việc, …). Required matches count full, soft prefs half." },
+  "s-category": { t:"category signal", m:"rank.py · weight 0.05 (tuned)",
+    f:"1.0 if poi.category == intent.category\n0.0 if it mismatches\n0.5 (neutral) if no category was parsed",
+    b:"A <b>soft</b> category prior — a parser mis-category only mildly penalizes the true answer instead of banishing it. (A separate <i>hard</i> category filter applies post-rank only when the parse is fully explained.) One of our two additions beyond the sponsor's 6 signals." },
+  "s-distance": { t:"distance signal", m:"rank.py · weight 0.30 (tuned)",
+    f:"d = haversine(anchor, poi)   [km]\nsignal = clamp01( exp(−d / 3.0) )\n0.5 (neutral) when no anchor resolved",
+    b:"Exponential decay with a 3 km scale — a POI 3 km away scores ~0.37, one next door ~1.0. Only active when the query resolved a location anchor; otherwise neutral so non-spatial queries are untouched. Pairs with the anchor gate." },
+  "s-rating": { t:"rating signal", m:"rank.py · weight 0.05 (tuned)",
+    f:"bayes = v/(v+m)·rating + m/(v+m)·C\n         m = 30,  C = corpus mean rating\nsignal = clamp01( (bayes − 3.5) / (5.0 − 3.5) )",
+    b:"Bayesian shrinkage toward the global mean: a 5.0 from 3 reviews is pulled down, a 4.6 from 2,000 holds. The low prior <b>m=30</b> keeps the narrow 3.8–4.7 rating band still varying instead of flattening to a constant." },
+  "s-popularity": { t:"popularity signal", m:"rank.py · weight 0.20 (tuned)",
+    f:"signal = clamp01( popularity_score / 100 )",
+    b:"A query-independent quality prior straight from the dataset's 0–100 popularity score. The tuner leaned on this (0.20) because on this synthetic data popularity correlates with the labeled answers — reported honestly with confidence intervals." },
+  "s-opennow": { t:"open_now signal", m:"rank.py · injected clock (A1)",
+    f:"target = intent.open_after or now (14:00)\nstate  = is_open(hours, target)\nsignal = 1.0 open · 0.3 closed · 0.5 unknown",
+    b:"Tests the POI's opening hours at the relevant time — the query's requested late-night hour (\"mở khuya\" → 22:00) or the injected reference clock. Handles \"24/7\" and overnight wraparound (18:00–03:00). The clock is injected so results never drift with wall time." },
+  "s-review": { t:"review / tags signal", m:"rank.py · weight 0.10 (tuned)",
+    f:"q = tokens(normalized query)\nsignal = clamp01( |q ∩ review_tokens| / |q| )\nreview_tokens = folded(tags + description)",
+    b:"Query need-terms matched against the POI's free-text tags and description — distinct from the structured attributes field. Maps 1:1 to the sponsor's review/tags signal." },
+  "s-price": { t:"price signal", m:"rank.py · fixed weight 0.20 (NOT tuned)",
+    f:"norm = (price_level − 1) / (4 − 1)\ncheap:     1 − norm      expensive: norm\n0.5 (neutral) if no price intent or no level",
+    b:"The only <b>bidirectional</b> signal — cheap intent scores level-1 POIs high, expensive intent inverts it. Weight is <b>fixed at 0.20, not eval-tuned</b>: only 2 of 60 eval queries express price, too few to inform a weight (NFR-6). weights.json carries no price key, so this default stays out of the tuned 8's way." },
+};
+
+const FLOWS = {
+  understand: {
+    name: "Understand — Vietnamese query → structured intent",
+    edges: ["e-q-norm","e-norm-parse","e-pois-sig"],
+    nodes: ["query","normalize","parse","pois"],
+    steps: ["<code>fold</code> strips diacritics + expands abbreviations (index-side only; display keeps accents)","<code>parse</code> reads category, attributes, anchor, price, open-after against the dataset's closed vocabularies","Unexplained tokens become a <b>subject</b> hint and gate the category filter"]
+  },
+  retrieve: {
+    name: "Retrieve — two views of the full corpus, fused",
+    edges: ["e-q-bm25","e-q-dense","e-mat-dense","e-bm25-rrf","e-dense-rrf","e-parse-bm25"],
+    nodes: ["query","bm25","dense","matrix","rrf","parse"],
+    steps: ["<b>BM25</b> scores all 111 POIs on folded tokens (district tokens dropped to avoid the quán/quận collision)","<b>Dense</b> cosine over the cached bge-m3 matrix captures meaning the words miss","<b>RRF</b> fuses the two rankings by rank: <code>Σ 1/(60+rank)</code>, normalized to a [0,1] relevance"]
+  },
+  rank: {
+    name: "Rank — weighted sum of 9 interpretable signals",
+    edges: ["e-rrf-sem","e-parse-sig","e-pois-sig","e-sig-score","e-rrf-score","e-wt-score"],
+    nodes: ["rrf","parse","pois","score","s-semantic","s-attributes","s-category","s-distance","s-rating","s-popularity","s-opennow","s-review","s-price"],
+    steps: ["Each of 9 signals maps a (query, POI) pair to [0,1] — semantic is seeded from the hybrid relevance","<code>s = Σ wₖ·sₖ / Σ wₖ</code> — a transparent weighted average, weights tuned on the tune split only","The whole corpus is sorted by <code>s</code>; every result keeps its per-signal breakdown"]
+  },
+  constrain: {
+    name: "Constrain — honor what the query demanded",
+    edges: ["e-score-constr","e-dense-constr","e-constr-anchor"],
+    nodes: ["score","constraint","anchor","dense"],
+    steps: ["Post-rank AND-filter on location / subject / category — <b>never</b> a destructive pre-filter","Subject filter fires only when the <b>dense</b> retriever corroborates the term (kills proper-name collisions)","Relax most-specific-first until non-empty; anchor gate floats near-POIs to the top (recall preserved)"]
+  },
+  explain: {
+    name: "Explain & serve — faithful reasons, exact contract",
+    edges: ["e-anchor-api","e-api-explain","e-anchor-bk","e-api-resp","e-explain-resp"],
+    nodes: ["anchor","api","explain","backstop","response"],
+    steps: ["Top-k results shaped into the Tasco <code>PlaceResult</code> contract (diacritics kept, <code>poi:</code> ids)","Reasons are generated from verified facts; <code>validate_reasons</code> rejects any unbacked claim","Empty result? C1 backstop returns popular POIs, honestly stamped <code>source=\"fallback\"</code>"]
+  },
+  keyword: {
+    name: "Keyword lane — the demo's side-by-side baseline",
+    edges: ["e-q-bm25","e-anchor-api","e-api-resp"],
+    nodes: ["query","bm25","api","response"],
+    steps: ["<code>/v1/search?engine=keyword</code> returns pure BM25 order — no dense, no signals, no filters","This is the \"before\": intent queries return literal keyword matches or nothing","Side-by-side with the full engine, the semantic lift is the money shot"]
+  },
+};
+
+const stage = document.getElementById('stage');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+nodes.forEach(n => n.addEventListener('click', () => {
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  const fEl = document.getElementById('d-formula');
+  if (d.f) { fEl.textContent = d.f; fEl.style.display = 'block'; }
+  else { fEl.style.display = 'none'; }
+  document.getElementById('d-body').innerHTML = d.b;
+}));
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+</script>
+</body>
+</html>

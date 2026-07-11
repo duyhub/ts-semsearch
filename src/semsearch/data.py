@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .normalize import fold
+
 # Column name deltas between the xlsx and our dataclass (SPEC §2 Phase-0 note).
 _POI_RENAME = {
     "poi_name": "name",
@@ -69,8 +71,15 @@ class QueryIntent:
     soft_prefs: list[str] = field(default_factory=list)
     open_after: str | None = None
     price_max: int | None = None
+    price_pref: str | None = None  # "cheap" | "expensive" | None — parsed affordability direction
     city: str | None = None
     district: str | None = None
+    content_terms: list[str] = field(default_factory=list)  # distinctive leftover terms -> subject filter
+    has_residual: bool = False  # any leftover content token -> category hard-filter ineligible
+    residual_terms: list[str] = field(default_factory=list)  # ALL leftover terms (>= content_terms);
+    # lets the pipeline tell a discredited subject from genuine unexplained content
+    corrected_query: str | None = None  # LLM-corrected query (typos fixed, diacritics restored)
+    # used for retrieval when present; None = the raw query is used unchanged
 
 
 @dataclass
@@ -93,6 +102,15 @@ class EvalQuery:
     semantic_requirements: list[str] = field(default_factory=list)
     ranking_signals: list[str] = field(default_factory=list)
     skills_tested: list[str] = field(default_factory=list)
+
+
+def content_tokens(poi: POI) -> set[str]:
+    """Folded token set of a POI's *name + brand*. Used for the subject hard-filter
+    (SPEC §6) and its corpus document-frequency. Deliberately narrow — a distinctive
+    term must NAME the POI (e.g. "bún chả" in "Bún Chả Hương Liên"), not merely appear
+    in its tags or free-text description; otherwise rare descriptors/amenities/verbs
+    ("tối", "học", "pool", "ngoài trời", "món") would wrongly filter out valid results."""
+    return {t for t in fold(f"{poi.name} {poi.brand or ''}").split() if t}
 
 
 def _split(value: object, sep: str) -> list[str]:
@@ -142,7 +160,9 @@ def load_pois(path: str | Path = DEFAULT_XLSX) -> list[POI]:
                 opening_hours=_opt_str(row.get("opening_hours")),
                 attributes=_split(row.get("attributes"), ";"),
                 tags=_split(row.get("tags"), ";"),
-                description=str(row.get("description") or "").strip(),
+                # _opt_str returns None on NaN/blank (a blank xlsx cell is float('nan'),
+                # which is truthy — `or ""` would yield the literal 'nan'); coerce to ''.
+                description=_opt_str(row.get("description")) or "",
             )
         )
     return pois

@@ -39,11 +39,20 @@ def generate_reasons(intent: QueryIntent, poi: POI, *, max_reasons: int = 4) -> 
     if matched:
         reasons.append(", ".join(f"✓ {a}" for a in matched))
 
-    # distance to the resolved anchor
+    # distance to the resolved anchor — but a POI INSIDE the anchored district reads
+    # "trong Quận 1", not a nonsensical "cách Quận 1 520 m" (C15/Fix 4).
     if intent.anchor is not None:
-        km = haversine(intent.anchor.lat, intent.anchor.lon, poi.lat, poi.lon)
-        dist = f"{km:.1f} km" if km >= 1 else f"{int(round(km * 1000, -1))} m"
-        reasons.append(f"cách {intent.anchor.name} {dist}")
+        in_district = (
+            intent.district is not None
+            and poi.district == intent.district
+            and intent.anchor.name.startswith(intent.district)
+        )
+        if in_district:
+            reasons.append(f"trong {intent.district}")
+        else:
+            km = haversine(intent.anchor.lat, intent.anchor.lon, poi.lat, poi.lon)
+            dist = f"{km:.1f} km" if km >= 1 else f"{int(round(km * 1000, -1))} m"
+            reasons.append(f"cách {intent.anchor.name} {dist}")
 
     # rating (+ review count)
     reasons.append(f"{poi.rating:.1f}★ · {_fmt_int(poi.review_count)} đánh giá")

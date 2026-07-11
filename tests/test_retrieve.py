@@ -5,13 +5,17 @@ guards are about keys/manifests, not vectors.
 """
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from semsearch import embeddings as E
-from semsearch.retrieve import rrf_fuse
+from semsearch import retrieve as R
+from semsearch.data import POI
+from semsearch.normalize import expand_query
+from semsearch.retrieve import BM25Index, DenseIndex, FIELD_WEIGHTS, rrf_fuse
 
 
 def test_rrf_fuse_orders_by_reciprocal_rank():
@@ -40,15 +44,16 @@ def test_query_cache_key_includes_provider_and_model():
 
 def test_load_doc_matrix_refuses_provider_mismatch(tmp_path, monkeypatch):
     """A cached matrix whose manifest names a different provider must be refused, not
-    silently used (A2 — all 1024-d, so a mismatch would return garbage)."""
+    silently used (A2 — all 1024-d, so a mismatch would return garbage). The manifest
+    stays the authoritative check even though the corpus-hashed path makes a genuine
+    cross-corpus collision structurally near-impossible (see build_doc_matrix docstring)."""
     monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
     local = E.LocalEmbedder()  # no model load; load_doc_matrix never calls embed
     poi_ids = ["C001", "C002"]
 
-    # write a matrix at local's expected path but stamp the manifest as a DIFFERENT provider
-    np.save(E._matrix_path(local), np.zeros((2, 1024), dtype=np.float32))
-    import json
-    with open(E._manifest_path(local), "w", encoding="utf-8") as fh:
+    # write a matrix at local's hashed path but stamp the manifest as a DIFFERENT provider
+    np.save(E._matrix_path(local, poi_ids), np.zeros((2, 1024), dtype=np.float32))
+    with open(E._manifest_path(local, poi_ids), "w", encoding="utf-8") as fh:
         json.dump(
             {"provider": "bedrock-cohere", "model_id": "cohere.embed-multilingual-v3",
              "dim": 1024, "n_docs": 2, "poi_ids": poi_ids},
@@ -59,7 +64,282 @@ def test_load_doc_matrix_refuses_provider_mismatch(tmp_path, monkeypatch):
         E.load_doc_matrix(local, poi_ids)
 
 
+def test_load_doc_matrix_refuses_poi_order_mismatch(tmp_path, monkeypatch):
+    """A cached matrix whose manifest lists different POI ids/order than the current
+    dataset must be refused, not silently used against the wrong rows (A2/C24). This can
+    no longer happen via normal build/load (different poi_ids hash to different paths),
+    so we deliberately corrupt the manifest at the path the caller's poi_ids resolve to —
+    proving the manifest check is still the authoritative guard, not just the hashed path."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    local = E.LocalEmbedder()  # no model load; load_doc_matrix never calls embed
+    requested = ["C001", "C999"]
+
+    # matrix + manifest are self-consistent (right provider/model) but stamped with a
+    # DIFFERENT POI id set than the caller asks for, deliberately placed at the path
+    # `requested` hashes to (simulating a corrupted/stale manifest, or a hash collision).
+    np.save(E._matrix_path(local, requested), np.zeros((2, 1024), dtype=np.float32))
+    with open(E._manifest_path(local, requested), "w", encoding="utf-8") as fh:
+        json.dump(
+            {"provider": local.provider, "model_id": local.model_id,
+             "dim": 1024, "n_docs": 2, "poi_ids": ["C001", "C002"]},
+            fh,
+        )
+
+    with pytest.raises(ValueError, match="POI order"):
+        E.load_doc_matrix(local, requested)  # C999 != cached C002
+
+
 def test_load_doc_matrix_missing_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):
         E.load_doc_matrix(E.LocalEmbedder(), ["C001"])
+
+
+# --------------------------------------------------------------------------- #
+# Corpus-discriminated cache paths (multi-corpus footgun: official 111 POIs   #
+# vs. the 1000-POI synthetic superset must never share a doc-matrix path)     #
+# --------------------------------------------------------------------------- #
+class _FakeEmbedder:
+    """Cheap, deterministic Embedder double — no model load, no network."""
+
+    provider = "local"
+    model_id = "BAAI/bge-m3"
+    dim = 16
+
+    def embed(self, texts, *, input_type="search_document"):
+        n = len(texts)
+        arr = np.zeros((n, self.dim), dtype=np.float32)
+        for i, text in enumerate(texts):
+            arr[i, i % self.dim] = 1.0 + (len(text) % 5)  # deterministic, text-dependent
+        return arr
+
+
+def _fake_pois(ids: list[str]):
+    return [
+        SimpleNamespace(
+            poi_id=pid, name=f"poi {pid}", brand=None, category="Cafe",
+            sub_category=None, district="Quận 1", city="TP.HCM", attributes=[],
+            tags=[], description="",
+        )
+        for pid in ids
+    ]
+
+
+def test_matrix_path_distinct_for_different_corpora(tmp_path, monkeypatch):
+    """Two different POI-id corpora must resolve to different cache paths — the bug this
+    fix addresses: before this, both corpora shared one path keyed by provider+model only,
+    so building over one corpus silently overwrote the other's cache."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    local = E.LocalEmbedder()
+    ids_a = ["C001", "C002", "C003"]
+    ids_b = ["D001", "D002"]
+    assert E._matrix_path(local, ids_a) != E._matrix_path(local, ids_b)
+    assert E._manifest_path(local, ids_a) != E._manifest_path(local, ids_b)
+
+
+def test_matrix_path_distinct_for_reordered_same_ids(tmp_path, monkeypatch):
+    """Same POI ids, different order -> different path. Row order is baked into the
+    matrix, so an order change must not silently reuse another order's cache."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    local = E.LocalEmbedder()
+    ids = ["C001", "C002", "C003"]
+    reordered = ["C003", "C001", "C002"]
+    assert E._matrix_path(local, ids) != E._matrix_path(local, reordered)
+    assert E._manifest_path(local, ids) != E._manifest_path(local, reordered)
+
+
+def test_corpus_hashed_paths_round_trip_for_two_corpora(tmp_path, monkeypatch):
+    """build -> load round-trips correctly and independently for two distinct corpora
+    sharing the same provider/model and the same tmp CACHE_DIR."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    emb = _FakeEmbedder()
+    pois_a = _fake_pois(["C001", "C002", "C003"])
+    pois_b = _fake_pois(["D001", "D002"])
+
+    matrix_a = E.build_doc_matrix(pois_a, emb)
+    matrix_b = E.build_doc_matrix(pois_b, emb)
+
+    loaded_a = E.load_doc_matrix(emb, [p.poi_id for p in pois_a])
+    loaded_b = E.load_doc_matrix(emb, [p.poi_id for p in pois_b])
+    assert np.array_equal(loaded_a, matrix_a)
+    assert np.array_equal(loaded_b, matrix_b)
+    assert loaded_a.shape == (3, emb.dim)
+    assert loaded_b.shape == (2, emb.dim)
+
+
+def test_dense_index_switches_between_corpora_without_crashing(tmp_path, monkeypatch):
+    """DenseIndex over corpus A, then over corpus B, using the same tmp CACHE_DIR: must
+    NOT raise (this is exactly the bug — building B used to overwrite A's cache path,
+    so a later A rebuild/load would trip the A2 poi-order ValueError uncaught)."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    emb = _FakeEmbedder()
+    pois_a = _fake_pois(["C001", "C002"])
+    pois_b = _fake_pois(["D001", "D002", "D003"])
+
+    idx_a = DenseIndex(pois_a, emb)
+    idx_b = DenseIndex(pois_b, emb)
+    assert idx_a.poi_ids == ["C001", "C002"]
+    assert idx_b.poi_ids == ["D001", "D002", "D003"]
+    assert idx_a.matrix.shape == (2, emb.dim)
+    assert idx_b.matrix.shape == (3, emb.dim)
+
+
+def test_dense_index_reload_of_earlier_corpus_uses_its_own_cache(tmp_path, monkeypatch):
+    """Re-creating a DenseIndex over corpus A after B has also been indexed must load A's
+    OWN cached matrix (not rebuild, not B's) — proving the two corpora's caches coexist."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    emb = _FakeEmbedder()
+    pois_a = _fake_pois(["C001", "C002"])
+    pois_b = _fake_pois(["D001", "D002", "D003"])
+
+    idx_a = DenseIndex(pois_a, emb)  # builds + caches A
+    DenseIndex(pois_b, emb)          # builds + caches B (same CACHE_DIR, distinct path)
+
+    def _boom(pois, e):
+        raise AssertionError("must load A's cache, not rebuild")
+
+    monkeypatch.setattr(R, "build_doc_matrix", _boom)
+    idx_a2 = DenseIndex(pois_a, emb)  # re-create over corpus A: must hit A's cache
+    assert np.array_equal(idx_a2.matrix, idx_a.matrix)
+    assert idx_a2.poi_ids == ["C001", "C002"]
+
+
+def test_dense_index_rebuilds_on_manifest_mismatch_instead_of_crashing(tmp_path, monkeypatch):
+    """Defensive: DenseIndex.__init__ catches (FileNotFoundError, ValueError) from
+    load_doc_matrix and rebuilds rather than propagating the A2 ValueError. With
+    corpus-hashed paths a real mismatch is structurally near-impossible, but a stale/
+    corrupted manifest landing at the hashed path (e.g. hand-edited, or a truncated-hash
+    collision) must still degrade to a fresh, coherent-by-construction build — never a crash."""
+    monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
+    emb = _FakeEmbedder()
+    pois = _fake_pois(["C001", "C002"])
+    poi_ids = [p.poi_id for p in pois]
+
+    E.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(E._matrix_path(emb, poi_ids), np.zeros((2, emb.dim), dtype=np.float32))
+    with open(E._manifest_path(emb, poi_ids), "w", encoding="utf-8") as fh:
+        json.dump(
+            {"provider": emb.provider, "model_id": emb.model_id, "dim": emb.dim,
+             "n_docs": 2, "poi_ids": ["WRONG1", "WRONG2"]},
+            fh,
+        )
+
+    idx = DenseIndex(pois, emb)  # must rebuild, not crash
+    assert idx.poi_ids == ["C001", "C002"]
+    assert idx.matrix.shape == (2, emb.dim)
+
+
+# --------------------------------------------------------------------------- #
+# BM25F-lite field weighting + OOV typo canonicalization (T1b).               #
+#                                                                             #
+# Field weights are applied by REPEATING a field's text in the flat doc, so   #
+# rank_bm25 reads the repeats as raised term frequency. NB: BM25Okapi IDF     #
+# goes NEGATIVE when a term sits in > half the corpus, which would INVERT the  #
+# weighting — so these fixtures add filler POIs to keep the probe term rare    #
+# (small df, large N -> positive IDF), exactly as in the real 111/1000 corpus.#
+# --------------------------------------------------------------------------- #
+def _poi(pid: str, *, name: str = "Place", brand: str | None = None,
+         category: str = "Cafe", sub_category: str | None = None,
+         district: str = "Quận 1", city: str = "TP.HCM", address: str = "1 Le Loi",
+         attributes: list[str] | None = None, tags: list[str] | None = None,
+         description: str = "") -> POI:
+    """Minimal POI double for BM25 tests — only the lexical_doc fields matter."""
+    return POI(
+        poi_id=pid, name=name, brand=brand, category=category, sub_category=sub_category,
+        city=city, district=district, address=address, lat=10.0, lon=106.0, rating=4.0,
+        review_count=10, popularity=0.5, price_level=2, opening_hours="08:00-22:00",
+        attributes=attributes or [], tags=tags or [], description=description,
+    )
+
+
+def _fillers(n: int = 8) -> list[POI]:
+    """Distinct-token POIs so a probe term stays rare (positive IDF)."""
+    return [_poi(f"F{i}", name=f"filler{i}", attributes=[f"attr{i}"]) for i in range(n)]
+
+
+def test_field_weighting_boosts_attributes_over_description():
+    """The chosen T1b weighting (attributes x2) ranks a rare term found in a POI's
+    attributes ABOVE the same term found only in another POI's free-text description
+    (x1). This is the field-weight upgrade: TF is raised by repeating the field's text."""
+    assert FIELD_WEIGHTS["attributes"] > FIELD_WEIGHTS["description"]
+    in_attr = _poi("A", attributes=["zorblat"])   # rare probe term in the x2 field
+    in_desc = _poi("B", description="zorblat")     # same term in the x1 field
+    idx = BM25Index(_fillers() + [in_attr, in_desc])
+    ranked = idx.rank_ids("zorblat")
+    assert ranked[0] == "A"  # higher TF from the x2 field wins (both matched, A first)
+    assert dict(idx.search("zorblat"))["A"] > dict(idx.search("zorblat"))["B"]
+
+
+def test_field_weighting_all_ones_reproduces_flat_doc(monkeypatch):
+    """All-1s FIELD_WEIGHTS is token-for-token the historical flat concat: a term in
+    attributes then ties the same term in description (no field advantage)."""
+    monkeypatch.setattr(R, "FIELD_WEIGHTS", {k: 1 for k in R.FIELD_WEIGHTS})
+    pois = _fillers() + [_poi("A", attributes=["zorblat"]), _poi("B", description="zorblat")]
+    idx = BM25Index(pois)
+    scores = dict(idx.search("zorblat"))
+    assert scores["A"] == scores["B"]  # identical doc length + TF -> identical score
+
+
+def test_district_token_still_retrievable_trap_case():
+    """The 'trà' ~ 'Sơn Trà' fold-collision guard: district stays at weight 1 (NEVER 0),
+    so a district query still retrieves its POIs. Dropping district previously regressed
+    tune NDCG@5 0.959 -> 0.948 (see lexical_doc)."""
+    assert FIELD_WEIGHTS["district"] >= 1 and FIELD_WEIGHTS["city"] >= 1
+    son_tra = _poi("ST", name="Cà Phê X", district="Sơn Trà", city="Đà Nẵng")
+    other = _poi("OT", name="Cà Phê Y", district="Hải Châu", city="Đà Nẵng")
+    idx = BM25Index(_fillers() + [son_tra, other])
+    assert idx.rank_ids("Sơn Trà")[0] == "ST"
+
+
+def test_oov_typo_retrieves_gold_poi():
+    """A typo'd query token is snapped onto its unique edit-1 lexicon neighbour before
+    scoring, so 'wjfi' (edit-1 from 'wifi', which is an ATTRIBUTE token -> part of the
+    doc) retrieves the wifi POI. Gives typo'd queries lexical recall with no LLM."""
+    wifi_poi = _poi("W", attributes=["wifi"])
+    other = _poi("O", attributes=["outdoor"])
+    idx = BM25Index(_fillers() + [wifi_poi, other])
+    assert idx._canonicalize_oov(["wjfi"]) == ["wifi"]  # unique edit-1 rewrite
+    assert idx.rank_ids("wjfi")[0] == "W"
+
+
+def test_oov_ambiguous_typo_not_rewritten():
+    """Precision guard: a token within edit-1 of TWO lexicon terms is AMBIGUOUS, so
+    canonicalize refuses and the token is left untouched (matches nothing) rather than
+    risk mis-mapping. 'bind' is edit-1 from both 'band' and 'bond'."""
+    a = _poi("A", attributes=["band"])
+    b = _poi("B", attributes=["bond"])
+    idx = BM25Index(_fillers() + [a, b])
+    assert {"band", "bond"} <= idx.lexicon and "bind" not in idx.lexicon
+    assert idx._canonicalize_oov(["bind"]) == ["bind"]  # ambiguous -> unchanged
+
+
+def test_oov_short_token_untouched():
+    """Tokens shorter than the min length are never fuzzy-matched, even when edit-1 from
+    a lexicon term — 'wif' (len 3) is a deletion away from 'wifi' but too short."""
+    idx = BM25Index(_fillers() + [_poi("W", attributes=["wifi"])])
+    assert "wif" not in idx.lexicon
+    assert idx._canonicalize_oov(["wif"]) == ["wif"]
+
+
+def test_oov_clean_query_scores_byte_identical_to_no_canonicalization():
+    """No behavior change when every query token is in-vocab: search() returns exactly
+    what scoring the expanded tokens directly (the pre-canonicalization path) returns —
+    canonicalization is a strict no-op for clean queries."""
+    pois = _fillers() + [_poi("A", attributes=["wifi"], name="Cà Phê Yên Tĩnh"),
+                         _poi("B", attributes=["outdoor"], name="Quán Trà")]
+    idx = BM25Index(pois)
+    q = "cà phê wifi"
+    tokens = expand_query(q)
+    assert all(t in idx.lexicon for t in tokens)  # precondition: fully in-vocab
+    scores = idx.bm25.get_scores(tokens)  # the exact pre-canonicalization scoring path
+    order = sorted(range(len(idx.poi_ids)), key=lambda i: scores[i], reverse=True)
+    reference = [(idx.poi_ids[i], float(scores[i])) for i in order]
+    assert idx.search(q) == reference  # byte-identical (poi_id, score) tuples
+
+
+# Latency note (T1b, measured, not asserted — a timed assertion is flaky in CI):
+# lexicon = 470 tokens (official 111-POI corpus) / 845 tokens (synth 1000-POI corpus).
+# Mean BM25 search latency on typo'd queries (7 distinct typos x 200 reps): 0.079 ms
+# (official) / 0.291 ms (synth 1000) — both far under the 5 ms budget. canonicalize's
+# per-term edit-1 scan early-outs on the |len(a)-len(b)|>1 length gap, so no length-
+# bucket prefilter was needed.

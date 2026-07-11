@@ -10,13 +10,14 @@ from __future__ import annotations
 import re
 import unicodedata
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterable, Sequence
 
 # Abbreviation / slang dictionary — keys and values are FOLDED (see fold()).
 # Query-side only; documents are already canonical. Seeded from SPEC §3 + the
 # dataset's cities/categories; extend from eval failures.
 ABBREVIATIONS: dict[str, str] = {
-    "hcm": "tp hcm", "sg": "tp hcm", "tphcm": "tp hcm", "hcmc": "tp hcm",
+    "hcm": "tp hcm", "sg": "tp hcm", "tphcm": "tp hcm", "hcmc": "tp hcm", "sai gon": "tp hcm",
     "hn": "ha noi", "dn": "da nang", "dl": "da lat",
     "cf": "ca phe", "cafe": "ca phe", "cofe": "ca phe", "coffee": "ca phe", "quan cf": "quan ca phe",
     "ks": "khach san", "hotel": "khach san",
@@ -27,6 +28,126 @@ ABBREVIATIONS: dict[str, str] = {
 }
 
 _Q_RE = re.compile(r"^q(\d{1,2})$")  # q1..q12 -> "quan N"
+
+# Folded connectives + generic quality adjectives + generic place words. Used to
+# strip filler when detecting whether a query is "fully explained" (SPEC §6 hard
+# filters). MUST NOT contain category/subject nouns (bún, chả, mua, sắm, ...) — a
+# leftover subject noun is exactly what blocks a category hard-filter (guards P019/P055).
+STOPWORDS: frozenset[str] = frozenset({
+    # connectives / prepositions / determiners
+    "o", "cho", "co", "cua", "va", "voi", "de", "tai", "gan", "day", "nay", "do",
+    "ra", "vao", "len", "xuong", "khu", "vuc", "khong", "qua", "cung", "hay", "hoac",
+    "mot", "cac", "nhung", "vai", "moi",
+    # generic place / intent words
+    "noi", "cho", "dia", "diem", "quan", "tim", "kiem", "muon", "can", "gi", "nao",
+    "phu", "hop", "the",
+    # generic quality adjectives
+    "ngon", "dep", "re", "tot", "sang", "chanh", "xin", "cu", "lon", "nho", "rong",
+    "rai", "sach", "se", "gia", "noi tieng", "tieng",
+    # generic descriptors (incl. common English) that can appear in POI names but are
+    # not subjects: view/city/scenery, dining verbs, time words
+    "view", "thanh", "an", "uong", "mon", "gio",
+})
+
+
+def contains_token_seq(haystack_folded: str, key_folded: str) -> bool:
+    """True iff `key_folded` appears as a contiguous token subsequence of
+    `haystack_folded` (both already folded). Token-boundary match, so the district
+    key "quan 1" does NOT match inside "quan 10"/"quan 12" (the substring collision)."""
+    ht = haystack_folded.split()
+    kt = key_folded.split()
+    m = len(kt)
+    if m == 0:
+        return False
+    return any(ht[i:i + m] == kt for i in range(len(ht) - m + 1))
+
+
+def _display_tokens(raw: str) -> list[str]:
+    """Diacritic-preserving tokens aligned 1:1 with ``fold(raw).split()``.
+
+    A character joins the current token iff it survives folding (letters, digits,
+    '/'); the string is NFC-normalized + lowercased first so each surviving display
+    char folds to exactly one folded char — guaranteeing ``display[i]`` folds to the
+    i-th folded token and that the two are equal length. Stray combining marks
+    attach to the current token (they fold away). This lets a matcher align the raw
+    query's diacritics against a key's display form character by character.
+    """
+    s = unicodedata.normalize("NFC", raw).lower()
+    tokens: list[str] = []
+    cur: list[str] = []
+    for ch in s:
+        if unicodedata.category(ch) == "Mn":  # combining mark: keep, folds to nothing
+            if cur:
+                cur.append(ch)
+            continue
+        if fold(ch):  # survives folding -> part of a token
+            cur.append(ch)
+        elif cur:  # separator -> flush
+            tokens.append("".join(cur))
+            cur = []
+    if cur:
+        tokens.append("".join(cur))
+    return tokens
+
+
+def _char_compatible(q_char: str, k_char: str) -> bool:
+    """A single aligned char is diacritic-compatible if the query char is plain
+    (equals its own folded form) or exactly matches the key's display char. A
+    diacritic-bearing query char must not contradict the key's char."""
+    return fold(q_char) == q_char or q_char == k_char
+
+
+def _span_compatible(raw_span: Sequence[str], key_span: Sequence[str]) -> bool:
+    for rt, kt in zip(raw_span, key_span):
+        if len(rt) != len(kt) or any(
+            not _char_compatible(rc, kc) for rc, kc in zip(rt, kt)
+        ):
+            return False
+    return True
+
+
+def compat_token_seq(raw_text: str, key_display: str) -> bool:
+    """True iff ``key_display``'s folded form appears as a contiguous token
+    subsequence of ``fold(raw_text)`` AND at least one such occurrence is
+    diacritic-COMPATIBLE with ``key_display`` (Fix 1).
+
+    Unaccented query input stays permissive — folding exists precisely so plain
+    input matches — but any diacritic the query DOES type must agree with the key:
+    'phở có' does NOT match key 'Phố Cổ' (ở≠ố) while 'pho co' and 'phố cổ' both do;
+    'sáng' does NOT match key 'sang' though plain 'sang' does. Token-boundary
+    matching also stops 'park' firing inside 'parking' or 'late' inside 'chocolate'.
+    """
+    key_fold = fold(key_display).split()
+    m = len(key_fold)
+    if m == 0:
+        return False
+    raw_disp = _display_tokens(raw_text)
+    raw_fold = [fold(t) for t in raw_disp]
+    key_disp = _display_tokens(key_display)
+    if len(key_disp) != m:  # defensive: key must tokenize to its folded length
+        key_disp = key_fold
+    for i in range(len(raw_fold) - m + 1):
+        if raw_fold[i:i + m] == key_fold and _span_compatible(raw_disp[i:i + m], key_disp):
+            return True
+    return False
+
+
+def token_key_matches(hay_folded: str, raw_text: str, key_display: str) -> bool:
+    """Keyword match against a (possibly abbreviation-expanded) folded haystack,
+    gated by diacritic compatibility with the RAW query (Fix 1).
+
+    The key must appear as a token subsequence of ``hay_folded`` — so 'q1' -> 'quan 1'
+    and 'cf' -> 'ca phe' expansions still resolve. If the key ALSO appears literally
+    in the raw query it must be diacritic-compatible there (rejects 'sáng' vs key
+    'sang'); if it only arose via expansion there is no raw diacritic to contradict,
+    so the match stands.
+    """
+    key_fold = fold(key_display)
+    if not contains_token_seq(hay_folded, key_fold):
+        return False
+    if not contains_token_seq(fold(raw_text), key_fold):
+        return True  # arrived via expansion; nothing in the raw query to contradict
+    return compat_token_seq(raw_text, key_display)
 
 
 def fold(s: str) -> str:
@@ -48,15 +169,44 @@ def tokenize(s: str) -> list[str]:
     return [t for t in folded.split(" ") if t]
 
 
+def _is_adjacent_transposition(a: str, b: str) -> bool:
+    """True iff `a` becomes `b` by swapping exactly one adjacent pair of characters
+    (a Damerau transposition): same length, identical everywhere except two adjacent
+    positions that hold each other's character. Same letters, wrong order in one spot
+    — a higher-confidence typo signal than a substitution, which lets canonicalize
+    prefer 'tihn' -> 'tinh' over the substitution neighbour 'tien'."""
+    if len(a) != len(b):
+        return False
+    diffs = [i for i in range(len(a)) if a[i] != b[i]]
+    if len(diffs) != 2:
+        return False
+    i, j = diffs
+    return j == i + 1 and a[i] == b[j] and a[j] == b[i]
+
+
 def _levenshtein_le1(a: str, b: str) -> bool:
-    """True iff edit distance(a, b) <= 1. Cheap early-outs; no full DP needed."""
+    """True iff `a` and `b` are within a single edit — one substitution, insertion,
+    deletion, OR one adjacent transposition (optimal string alignment / Damerau-
+    Levenshtein distance <= 1).
+
+    Transposition is included because it is the single most common keyboard/Vietnamese
+    typo class AND the SPEC §3 canonical example ('yen tihn' -> 'yen tinh') is exactly a
+    transposition, which plain Levenshtein (distance 2) would miss. Cheap early-outs; no
+    full DP needed.
+    """
     if a == b:
         return True
     la, lb = len(a), len(b)
     if abs(la - lb) > 1:
         return False
-    if la == lb:  # single substitution
-        return sum(x != y for x, y in zip(a, b)) == 1
+    if la == lb:
+        diffs = [i for i in range(la) if a[i] != b[i]]
+        if len(diffs) == 1:  # single substitution
+            return True
+        if len(diffs) == 2:  # possibly one adjacent transposition
+            i, j = diffs
+            return j == i + 1 and a[i] == b[j] and a[j] == b[i]
+        return False
     # one insertion/deletion: walk the shorter against the longer
     if la > lb:
         a, b = b, a
@@ -79,18 +229,32 @@ def canonicalize(token: str, vocab: Sequence[str], *, max_edit: int = 1, min_len
     """Single fuzzy-match primitive (C2). Return the canonical vocab term for
     `token`, or None if no confident match.
 
-    Exact match wins. Fuzzy (edit distance <= max_edit) only fires for tokens of
-    length >= min_len, and ONLY when the match is UNAMBIGUOUS — if the token is
-    within max_edit of two different vocab terms, we refuse (return None) rather
-    than risk mis-mapping a real word onto an unrelated one (the C2 precision
-    guard). `token` and `vocab` are expected already folded.
+    Exact match wins. Fuzzy (edit distance <= max_edit, incl. one adjacent
+    transposition) only fires for tokens of length >= min_len, and ONLY when the
+    match is UNAMBIGUOUS — if the token is within one edit of two different vocab
+    terms we refuse (return None) rather than risk mis-mapping a real word onto an
+    unrelated one (the C2 precision guard).
+
+    Tie-break by edit type: a transposition preserves the character multiset (right
+    letters, wrong order), so it is a higher-confidence correction than a
+    substitution/indel. When both kinds of candidate exist we prefer a UNIQUE
+    transposition, falling back to the general edit-1 set only when no candidate is a
+    transposition. This lets the SPEC example 'tihn' -> 'tinh' win over the
+    substitution neighbour 'tien' without weakening the ambiguity guard for
+    same-edit-type collisions ('banh' -> {binh, benh, hanh} -> refuse).
+
+    `token` and `vocab` are expected already folded.
     """
     if token in vocab:
         return token
     if max_edit < 1 or len(token) < min_len:
         return None
     hits = [v for v in vocab if len(v) >= min_len and _levenshtein_le1(token, v)]
-    return hits[0] if len(hits) == 1 else None
+    if not hits:
+        return None
+    transposed = [v for v in hits if _is_adjacent_transposition(token, v)]
+    tier = transposed or hits
+    return tier[0] if len(tier) == 1 else None
 
 
 def expand_query(text: str) -> list[str]:
@@ -129,3 +293,56 @@ def _fold_cached(s: str) -> str:
 def doc_tokens(text: str) -> list[str]:
     """Tokenization for documents — fold only (docs are canonical, no expansion)."""
     return [t for t in _fold_cached(text).split(" ") if t]
+
+
+_RESOURCES = Path(__file__).resolve().parent / "resources"
+
+
+@lru_cache(maxsize=1)
+def _vi_common_by_fold() -> dict[str, tuple[str, ...]]:
+    """Map a folded token to the diacritic display forms of the Vietnamese common
+    words that fold to it (Fix 2). Vendored from stopwords-iso/stopwords-vi (MIT);
+    see resources/vi_common_words.txt. Diacritic-aware storage is what lets the
+    plain common word 'cha' (father/negation) coexist with the food subject 'chả'
+    without one masking the other."""
+    by_fold: dict[str, list[str]] = {}
+    with open(_RESOURCES / "vi_common_words.txt", encoding="utf-8") as fh:
+        for line in fh:
+            word = line.strip()
+            if not word or word.startswith("#"):
+                continue
+            key = fold(word)
+            if key:
+                by_fold.setdefault(key, []).append(unicodedata.normalize("NFC", word).lower())
+    return {k: tuple(v) for k, v in by_fold.items()}
+
+
+@lru_cache(maxsize=1)
+def common_word_folds() -> frozenset[str]:
+    """Folded forms of every vendored Vietnamese common word (the Fix 2 resource).
+
+    Exposed so callers (the parser's typo corrector, PRD FR-3) can treat any recognized
+    common word as NOT-a-typo: a query token that IS a common Vietnamese word must never
+    be fuzzy-corrected onto an unrelated vocabulary term (e.g. 'phòng'/'trên' must not be
+    snapped to 'phường'/'tiền')."""
+    return frozenset(_vi_common_by_fold())
+
+
+def query_common_tokens(text: str) -> set[str]:
+    """Folded query tokens that are Vietnamese common words (the vendored stopword
+    resource), matched DIACRITIC-COMPATIBLY against the raw query (Fix 2).
+
+    A flagged token can never be a distinctive subject and is dropped from the
+    parser's residual. Diacritic-aware: the superlative particle 'nhất' is flagged
+    (accented or plain 'nhat'), but the food subject 'chả' is NOT flagged by the
+    unrelated common word 'cha'. Only checks tokens that actually occur in the
+    query, so it stays cheap.
+    """
+    by_fold = _vi_common_by_fold()
+    out: set[str] = set()
+    for tok in set(fold(text).split()):
+        for disp in by_fold.get(tok, ()):
+            if compat_token_seq(text, disp):
+                out.add(tok)
+                break
+    return out
