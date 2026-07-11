@@ -24,6 +24,10 @@ CANDIDATES = ["local", "bedrock-cohere", "bedrock-titan"]
 
 
 def main() -> None:
+    # This script intentionally VARIES the embeddings provider (that is the measurement).
+    # It builds raw dense rankers only — no FullPipeline — so the deployment mode's
+    # LLM-parse default cannot reach it by construction (mode='local' semantics apply
+    # vacuously); the provider parameter below remains the only knob.
     pois = load_pois()
     queries = load_eval()
     split = load_split() if SPLIT_PATH.exists() else make_split(queries)

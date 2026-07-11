@@ -439,16 +439,139 @@ def test_qcache_key_differs_across_providers():
 
 
 # --------------------------------------------------------------------------- #
-# Region resolution precedence                                                #
+# Region-chain resolution precedence                                          #
 # --------------------------------------------------------------------------- #
-def test_region_precedence(monkeypatch):
-    for var in ("SEMSEARCH_BEDROCK_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"):
+_REGION_ENVS = (
+    "SEMSEARCH_BEDROCK_REGION", "SEMSEARCH_BEDROCK_REGIONS", "AWS_REGION", "AWS_DEFAULT_REGION",
+)
+
+
+def test_region_chain_precedence(monkeypatch):
+    """Precedence, highest first: singular REGION (chain of one) > plural REGIONS
+    (replaces the chain) > AWS_REGION/AWS_DEFAULT_REGION (chain of one, today's semantics)
+    > the venue-proximity default chain."""
+    for var in _REGION_ENVS:
         monkeypatch.delenv(var, raising=False)
-    assert E.BedrockEmbedder("bedrock-cohere")._region() == "ap-southeast-1"  # default
+    # default: the full venue-proximity chain (Singapore first, closest to the demo venue)
+    assert E.resolve_bedrock_regions() == ("ap-southeast-1", "ap-northeast-1", "us-west-2")
 
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
-    assert E.BedrockEmbedder("bedrock-cohere")._region() == "us-west-2"
+    assert E.resolve_bedrock_regions() == ("us-west-2",)  # chain of one (today's semantics)
     monkeypatch.setenv("AWS_REGION", "eu-central-1")
-    assert E.BedrockEmbedder("bedrock-cohere")._region() == "eu-central-1"  # AWS_REGION wins
+    assert E.resolve_bedrock_regions() == ("eu-central-1",)  # AWS_REGION wins over AWS_DEFAULT_REGION
+
+    monkeypatch.setenv("SEMSEARCH_BEDROCK_REGIONS", "ap-northeast-1, us-west-2 ,")
+    assert E.resolve_bedrock_regions() == ("ap-northeast-1", "us-west-2")  # plural replaces chain, trims blanks
     monkeypatch.setenv("SEMSEARCH_BEDROCK_REGION", "ap-southeast-1")
-    assert E.BedrockEmbedder("bedrock-cohere")._region() == "ap-southeast-1"  # override wins
+    assert E.resolve_bedrock_regions() == ("ap-southeast-1",)  # singular pins exactly one (highest)
+
+
+def test_titan_default_chain_skips_singapore(monkeypatch):
+    """Titan v2 is NOT offered in ap-southeast-1 (regional-absence, measured live) — its
+    DEFAULT chain starts in Tokyo instead of burning a doomed probe on Singapore every run.
+    Only the default is per-model: every env override still replaces any chain verbatim."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    titan = E.MODEL_IDS["bedrock-titan"]
+    assert E.resolve_bedrock_regions(titan) == ("ap-northeast-1", "us-west-2")
+    # models without a per-model entry keep the venue-proximity chain
+    assert E.resolve_bedrock_regions(E.MODEL_IDS["bedrock-cohere"]) == E.DEFAULT_BEDROCK_REGIONS
+    assert E.resolve_bedrock_regions() == E.DEFAULT_BEDROCK_REGIONS
+    # an explicit region pin is the user's word — it wins even for titan
+    monkeypatch.setenv("SEMSEARCH_BEDROCK_REGION", "ap-southeast-1")
+    assert E.resolve_bedrock_regions(titan) == ("ap-southeast-1",)
+
+
+def test_titan_pin_never_probes_singapore(monkeypatch):
+    """The titan embedder walks ITS OWN chain: no bedrock client is ever constructed for
+    ap-southeast-1, and the pin lands directly on ap-northeast-1 (zero wasted probes)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    built = _boto_factory(monkeypatch, lambda region: FakeBedrockClient(titan_responder()))
+    emb = E.BedrockEmbedder("bedrock-titan")
+    vecs = emb.embed(["ping"], input_type="search_query")
+    assert vecs.shape == (1, DIM)
+    assert emb._region == "ap-northeast-1"
+    assert "ap-southeast-1" not in built
+
+
+# --------------------------------------------------------------------------- #
+# Per-capability region walk: embedder pins the FIRST region whose probe works #
+# --------------------------------------------------------------------------- #
+def _boto_factory(monkeypatch, per_region):
+    """Monkeypatch boto3.client with a factory keyed on region_name (NO network).
+    `per_region(region) -> FakeBedrockClient`. Returns the dict of clients built."""
+    built: dict = {}
+
+    def factory(service, *, region_name=None, config=None):  # boto3.client signature
+        assert service == "bedrock-runtime"
+        client = per_region(region_name)
+        built[region_name] = client
+        return client
+
+    monkeypatch.setattr("boto3.client", factory)
+    return built
+
+
+def test_embedder_pins_first_working_region(monkeypatch, caplog):
+    """resolve_provider's preflight walks the chain: region A's probe raises, region B's
+    succeeds -> the client is constructed & pinned for B, with one warning for the skip."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+
+    def per_region(region):
+        down = RuntimeError("region down") if region == "ap-southeast-1" else None
+        return FakeBedrockClient(cohere_responder(), raise_exc=down)
+
+    built = _boto_factory(monkeypatch, per_region)
+    emb = E.BedrockEmbedder("bedrock-cohere")
+    with caplog.at_level("WARNING"):
+        client = emb._get_client()  # first use triggers the chain walk
+
+    assert emb._region == "ap-northeast-1"          # region A raised -> pinned the next
+    assert client is built["ap-northeast-1"]         # client constructed & pinned for B
+    assert "us-west-2" not in built                  # stopped at the first success
+    warns = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warns) == 1 and "ap-southeast-1" in warns[0].message  # one warning, the skip
+
+
+def test_embedder_all_regions_fail_degrades_to_local(monkeypatch, caplog):
+    """Every region's probe fails -> resolve_provider degrades to 'local' exactly as today."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    _boto_factory(
+        monkeypatch,
+        lambda region: FakeBedrockClient(cohere_responder(), raise_exc=RuntimeError(f"{region} down")),
+    )
+    with caplog.at_level("WARNING"):
+        assert E.resolve_provider("bedrock-cohere") == "local"  # no working region -> local
+    assert any("local" in r.message.lower() for r in caplog.records)
+
+
+def test_embedder_first_region_wins_without_walk(monkeypatch):
+    """When the closest region already works, only it is constructed (no needless probing)."""
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    built = _boto_factory(monkeypatch, lambda region: FakeBedrockClient(cohere_responder()))
+    emb = E.BedrockEmbedder("bedrock-cohere")
+    out = emb.embed(["a", "b"])
+    assert out.shape == (2, DIM)
+    assert emb._region == "ap-southeast-1"          # closest region, pinned first
+    assert list(built) == ["ap-southeast-1"]         # no other region ever constructed
+
+
+def test_pin_region_no_creds_short_circuits_region_walk(monkeypatch):
+    """NoCredentialsError at the FIRST region must stop the walk immediately (credentials
+    are account-wide, not regional) — no clients for the remaining regions."""
+    from botocore.exceptions import NoCredentialsError
+
+    for var in _REGION_ENVS:
+        monkeypatch.delenv(var, raising=False)
+    built = _boto_factory(
+        monkeypatch,
+        lambda region: FakeBedrockClient(cohere_responder(), raise_exc=NoCredentialsError()),
+    )
+    emb = E.BedrockEmbedder("bedrock-cohere")
+    with pytest.raises(NoCredentialsError):
+        emb._get_client()
+    assert list(built) == ["ap-southeast-1"]  # walk stopped at region 1

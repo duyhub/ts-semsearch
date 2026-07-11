@@ -37,7 +37,8 @@ def _ok(status: int, body: dict) -> bool:
 
 
 def main() -> None:
-    client = TestClient(create_app(prewarm=False))
+    # G5 is a gate on the LOCAL demo config — pin the mode so SEMSEARCH_MODE can't leak in.
+    client = TestClient(create_app(prewarm=False, mode="local"))
     cases: list[tuple[str, str]] = [(f"eval:{q.query_id}", q.input_query) for q in load_eval()]
     cases += [(f"adv:{name}", text) for name, text in ADVERSARIAL]
 

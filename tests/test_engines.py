@@ -24,7 +24,7 @@ class _StubPipeline:
 def test_explicit_empty_weights_are_not_replaced(monkeypatch):
     captured = {}
 
-    def _factory(pois, *, weights=None, now=None, provider="local"):
+    def _factory(pois, *, weights=None, now=None, provider="local", mode=None):
         captured["weights"] = weights
         return _StubPipeline(pois, weights=weights)
 
@@ -36,7 +36,7 @@ def test_explicit_empty_weights_are_not_replaced(monkeypatch):
 def test_none_weights_default_to_tuned(monkeypatch):
     captured = {}
 
-    def _factory(pois, *, weights=None, now=None, provider="local"):
+    def _factory(pois, *, weights=None, now=None, provider="local", mode=None):
         captured["weights"] = weights
         return _StubPipeline(pois, weights=weights)
 
