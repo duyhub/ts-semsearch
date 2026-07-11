@@ -24,6 +24,10 @@ Signals: **6 map 1:1 to the sponsor's `Ranking_Signals`, plus `category`-fit and
 preference** we added (9 total). Full write-up + the mapping: [`docs/methodology.md`](docs/methodology.md).
 Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart). OpenAPI: `openapi.json`.
 
+Typo tolerance (Damerau/optimal-string-alignment edit distance ≤1, closed-vocabulary
+correction) runs entirely locally and deterministically — no network, no LLM — in every
+deployment mode.
+
 ## Results — all five gates green
 
 | Gate | Metric | Result | Threshold |
@@ -126,6 +130,13 @@ The engine has one switch for how it sources models — `DEFAULT_MODE` in
 `SEMSEARCH_LLM_PARSE` always wins over the mode default: `off` forces it off, `on`/`bedrock`
 force it on (full Bedrock→OpenAI chain), `openai` forces it on pinning OpenAI directly
 (skips all Bedrock probes); unknown values warn and stay off.
+
+**LLM invocation gate** (`DEFAULT_LLM_GATE` in `src/semsearch/config.py`, env
+`SEMSEARCH_LLM_GATE=auto|always`, `auto` by default): when the LLM parse is on, `auto` skips
+the ~1.7s call for a clean, fully in-vocabulary query (no missing diacritic, no
+out-of-vocabulary token) — a deterministic, network-free check, since that case gains
+nothing measured while the correction's value concentrates on degraded queries. `always`
+forces the LLM on every query. Inert whenever the LLM parse itself is off.
 
 **Query rewrite** (`DEFAULT_QUERY_REWRITE` in `src/semsearch/config.py`, env
 `SEMSEARCH_QUERY_REWRITE=on|off`, on by default): rides the LLM parse — its `corrected_query`

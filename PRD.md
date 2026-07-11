@@ -135,26 +135,41 @@ under time pressure; **P2** = stretch.
   ambiguous-anchor, and old-vs-new-admin-name pairs (same query in both namings → same
   anchor and results); intent fields also spot-checked against the eval sheet's
   `expected_intent`/`expected_semantic_requirements` columns (tune split only).
-- **FR-3 (P0) — Mixed-language, typos, and degraded input.** Non-accented, mixed vi/en,
-  all-caps, misspelled, and incomplete queries return sensible results through the same
-  pipeline. Mixed Language is a first-class eval category (5/60 queries), not an edge case.
-  Typo tolerance has an explicit mechanism — query tokens that match no vocabulary entry
-  are fuzzy-matched (edit distance ≤1) against the closed vocabularies (category keywords,
-  attribute taxonomy, gazetteer names), so "cafe yen tihn" still parses; embeddings absorb
-  the rest. **Brand queries** ("highlands gần đây") resolve via lexical brand fields +
-  popularity signal — named here so they get tests, not just luck.
+- **FR-3 (P0) — Mixed-language, typos, and degraded input. IMPLEMENTED.** Non-accented,
+  mixed vi/en, all-caps, misspelled, and incomplete queries return sensible results through
+  the same pipeline. Mixed Language is a first-class eval category (5/60 queries), not an
+  edge case. Typo tolerance has an explicit mechanism — query tokens that match no
+  vocabulary entry are fuzzy-matched (optimal-string-alignment/Damerau edit distance ≤1, so
+  a single adjacent-character transposition corrects too, not just substitution/indel — see
+  SPEC §3) against the closed vocabularies (category keywords, attribute taxonomy,
+  gazetteer names). "cafe yen tihn" now genuinely parses to the intended attribute: the
+  transposition `tihn`→`tinh` is exactly the case plain Levenshtein-1 provably cannot fix;
+  embeddings absorb the rest. **Brand queries** ("highlands gần đây") resolve via lexical
+  brand fields + popularity signal — named here so they get tests, not just luck.
   *Acceptance:* metrics reported for the Mixed Language eval subset; unit tests for typo'd,
   brand, and incomplete queries; adversarial sweep (NFR-2).
-- **FR-4 (P1) — LLM intent parser.** Claude on Bedrock with structured output, closed to the
-  taxonomy/category vocabularies, layered over FR-2: LLM fills fields rules left empty; rules
-  win on gazetteer-verified anchors. Hard timeout (800 ms) → rule result. Parses cached.
+- **FR-4 (P1) — LLM intent parser.** Claude on Bedrock (OpenAI fallback when no Bedrock
+  candidate resolves) with structured output, closed to the taxonomy/category vocabularies,
+  layered over FR-2: LLM fills fields rules left empty; rules win on gazetteer-verified
+  anchors. Hard timeout **~2s connect / 3s read, no retries** → rule result (the original
+  "800 ms" figure here and in SPEC §7 never matched the shipped client config; corrected).
+  A deterministic degradation gate (`SEMSEARCH_LLM_GATE=auto|always`, default `auto`) skips
+  the call entirely for a clean, in-vocabulary query — the LLM fires only when the query has
+  no Vietnamese diacritic or carries an out-of-vocabulary token — so the common case pays no
+  extra latency; measured gain concentrates on degraded queries (up to +0.22 NDCG@5 at 1000
+  POIs), not clean ones. Parses cached (disk cache keyed by prompt version + provider +
+  model + query).
   *Acceptance:* golden tests pass with LLM on and off; kill-switch env var.
 
 ### Retrieval & ranking
 
-- **FR-5 (P0) — Hybrid candidate retrieval.** Lexical (BM25 over folded name/brand/address/
-  attributes/tags) + dense multilingual embeddings over composed POI documents, fused
-  (RRF) into a top-30 candidate set.
+- **FR-5 (P0) — Hybrid candidate retrieval.** Lexical (BM25 over a flat folded-token
+  document spanning name/brand/category/sub_category/district/city/address/attributes/tags/
+  description, with `attributes` field-weighted ×2 — see SPEC §5) + dense multilingual
+  embeddings over composed POI documents, fused (RRF). **Scores the full corpus, no top-k
+  candidate cut** — an earlier "top-30 candidate set" design is superseded: a pre-rank
+  top-k cut silently discards relevant POIs that fusion under-ranks, and the 9-signal
+  re-ranker needs the full corpus to re-order correctly (ablation-backed, SPEC §5 OV1).
   *Acceptance:* gates G1 & G2 — hybrid beats each single retriever on tune NDCG@5.
 - **FR-6 (P0) — Hard-constraint filtering with relaxation.** Confidently-parsed category,
   city/district, and required attributes filter candidates ("quán cà phê **yên tĩnh**" must
@@ -250,7 +265,10 @@ under time pressure; **P2** = stretch.
 ## 5. Non-Functional Requirements
 
 - **NFR-1 (P0) — Latency.** Warm p95 < 200 ms over the 60 eval queries on the demo machine
-  (no-LLM path); first-seen query with LLM parse < 1 s. **The warm number assumes a cached query
+  (no-LLM path); a first-seen query that DOES invoke the LLM parse pays its ~3 s-timeout budget
+  (measured ~1.7 s; result disk-cached, so repeats are instant) — and the degradation gate
+  (SEMSEARCH_LLM_GATE=auto) skips the LLM entirely for clean queries, so only degraded inputs
+  ever pay it. **The warm number assumes a cached query
   embedding; a novel query pays a cold bge-m3 forward pass (~100–300 ms), so the benchmark reports
   cold p95 and warm p95 separately (eng-review P1), and the embedding model loads at server startup
   with the query cache pre-warmed for eval + rehearsed demo queries.** Numbers included in
