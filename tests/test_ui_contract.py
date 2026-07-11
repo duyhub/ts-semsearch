@@ -29,7 +29,10 @@ def test_location_is_explicit_and_recoverable(ui):
     assert _has_id(ui, "locStatus")
     assert 'role="status"' in ui and 'aria-live="polite"' in ui
     assert "Bật vị trí" in ui
-    assert "Mặc định:" in ui and "Bật vị trí" in ui
+    # The denied/unavailable status is just the action, never a fake "default
+    # location" claim — the camera frames results, not DEFAULT_MAP_FOCUS.
+    assert "Mặc định:" not in ui
+    assert "setLocationStatus('default','Bật vị trí')" in ui
     assert _has_id(ui, "locEnable") or _has_id(ui, "locButton")
     # The same visible button may serve as both initial enable and retry.
     assert _has_id(ui, "locRetry") or _has_id(ui, "locButton") or _has_id(ui, "locEnable")
@@ -111,3 +114,45 @@ def test_mobile_list_map_controls_are_accessible(ui):
     assert 'aria-pressed="false">Bản đồ' in ui
     assert "function setView(view)" in ui
     assert "data-view" in ui
+
+
+def test_map_bounds_prefer_results_over_display_fallback(ui):
+    """The camera fits the result markers; the display-only fallback is a last resort.
+
+    Regression guard: the no-anchor bounds ladder must reach for result points
+    (`pts`) before ever parking on `displayFocus` (the sticky 'Trung tâm Hà Nội'
+    display center). If the fallback wins, result pins fall off-viewport.
+    """
+    bounds_expr = re.search(r"let bounds =(?P<expr>.*?);", ui, re.S)
+    assert bounds_expr, "bounds ternary not found in renderMap"
+    expr = bounds_expr.group("expr")
+    assert "pts.length ? pts" in expr
+    # `pts` must be preferred strictly before the displayFocus fallback branch.
+    assert "displayFocus" in expr
+    assert expr.index("pts.length ? pts") < expr.index("displayFocus")
+
+
+def test_map_empty_state_accounts_for_results(ui):
+    """The '#mapEmpty' card can never show while results with coordinates exist.
+
+    The empty-state / marker-strip early return keys off `hasFocus`; that flag must
+    fold in whether any result carries coordinates, so a geolocation-pending window
+    (no anchor, no display fallback yet) still renders the result pins.
+    """
+    assert "const hasResults=results.some(r=>r.coordinates)" in ui
+    has_focus = re.search(r"const hasFocus=Boolean\((?P<args>[^)]*)\)", ui)
+    assert has_focus, "hasFocus computation not found in renderMap"
+    assert "hasResults" in has_focus.group("args")
+    # The empty card is still driven by the negation of that same flag.
+    assert re.search(r"#mapEmpty['\"]\)\.classList\.toggle\(\s*['\"]show['\"]\s*,\s*!hasFocus", ui)
+
+
+def test_default_focus_legend_is_truthful(ui):
+    """The 'bản đồ mặc định' legend appears only when the fallback drives the camera.
+
+    When result points frame the map, the display fallback is not the camera focus,
+    so the legend must stay silent about it (matching the pre-regression behavior).
+    """
+    assert re.search(
+        r"else if\(displayFocus\s*&&\s*!pts\.length\)\s*\{", ui
+    ), "default-focus legend must be guarded by an empty result set"

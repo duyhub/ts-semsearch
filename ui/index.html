@@ -409,7 +409,7 @@ function useDefaultMapFocus(){
   locationState.coords=null;
   locationState.displayFallback={...DEFAULT_MAP_FOCUS};
   state.usedLocation=false;
-  setLocationStatus('default',`Mặc định: ${DEFAULT_MAP_FOCUS.name} · Bật vị trí`);
+  setLocationStatus('default','Bật vị trí');
   // Usually the first search was already location-free. If a previously granted
   // location is later revoked, refresh once without coordinates to remove its rank effect.
   if(hadRankLocation && state.q) run(state.q);
@@ -596,7 +596,11 @@ function renderMap(results, anchor){
   // promoted to `rankingAnchor`, drawn as a target, or echoed as proximity intent.
   const displayFocus=rankingAnchor ? null : locationState.displayFallback;
   const selectedResult=state.selected ? results.find(r=>r.id===state.selected&&r.coordinates) : null;
-  const hasFocus=Boolean(rankingAnchor || displayFocus || selectedResult);
+  // Invariant: the camera always frames the result markers; anchor/focus only refines it.
+  // The empty card + marker strip may fire ONLY when there is truly nothing to frame:
+  // no rankingAnchor, no selectedResult, no result coordinates, and no displayFocus.
+  const hasResults=results.some(r=>r.coordinates);
+  const hasFocus=Boolean(rankingAnchor || displayFocus || selectedResult || hasResults);
   $('#mapEmpty').classList.toggle('show',!hasFocus);
   $('.maplegend').style.display=hasFocus?'block':'none';
   if(!hasFocus){
@@ -621,9 +625,12 @@ function renderMap(results, anchor){
     markers[r.id]=mk; pts.push([c.lat,c.lon]);
   });
   $('#legendAnchor').innerHTML='';
+  // Bounds priority: rankingAnchor (set below) → selectedResult zoom-to-point →
+  // result pts whenever any exist → displayFocus single point only as a last resort.
   let bounds = selectedResult && !rankingAnchor
     ? [[selectedResult.coordinates.lat,selectedResult.coordinates.lon]]
-    : displayFocus ? [[displayFocus.lat,displayFocus.lon]] : pts;
+    : pts.length ? pts
+    : displayFocus ? [[displayFocus.lat,displayFocus.lon]] : [];
   if(rankingAnchor){
     anchor=rankingAnchor;
     const c=locationState.coords;
@@ -644,7 +651,8 @@ function renderMap(results, anchor){
     bounds = [[anchor.lat,anchor.lon], ...near];
   }else if(selectedResult){
     $('#legendAnchor').innerHTML=' · đang xem '+esc(selectedResult.name);
-  }else if(displayFocus){
+  }else if(displayFocus && !pts.length){
+    // Legend claims the default focus only when it actually drives the camera (last resort).
     $('#legendAnchor').innerHTML=' · bản đồ mặc định: '+esc(displayFocus.name)+' (chỉ là tâm hiển thị)';
   }
   if(bounds.length) m.fitBounds(bounds,{padding:[46,46], maxZoom:15});
