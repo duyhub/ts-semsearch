@@ -72,11 +72,20 @@ class BM25Index:
 
 
 class DenseIndex:
-    """Cosine retrieval over a provider-stamped embedding matrix (SPEC §4-5).
+    """Cosine retrieval over a provider+corpus-stamped embedding matrix (SPEC §4-5).
 
     Loads the cached matrix if present (asserting provider/model/POI-order match,
     A2), else builds and caches it. Vectors are L2-normalized, so cosine is one
     matvec.
+
+    The cache path is namespaced by both provider/model AND a corpus fingerprint
+    (embeddings._corpus_hash of the POI id sequence), so two different corpora sharing
+    a provider/model — e.g. the official 111-POI set and a synthetic superset — never
+    contend for the same file. load_doc_matrix can still raise the A2 ValueError if a
+    stale/corrupted manifest somehow occupies the resolved path; we catch that alongside
+    FileNotFoundError and rebuild rather than propagate it, because a fresh build is
+    coherent by construction and never serves a mismatched matrix (A2's actual intent
+    is refuse-to-SERVE-garbage, not refuse-to-rebuild).
     """
 
     def __init__(self, pois: Sequence[POI], embedder: Embedder | None = None):
@@ -84,7 +93,7 @@ class DenseIndex:
         self.poi_ids = [p.poi_id for p in pois]
         try:
             self.matrix = load_doc_matrix(self.emb, self.poi_ids)
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             self.matrix = build_doc_matrix(pois, self.emb)
 
     def search(self, query_text: str, k: int | None = None) -> list[tuple[str, float]]:

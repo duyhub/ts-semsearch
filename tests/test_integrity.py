@@ -78,6 +78,7 @@ def test_eval_engines_immune_to_deployment_mode(monkeypatch, tmp_path):
 
     monkeypatch.setenv("SEMSEARCH_MODE", "cloud")
     monkeypatch.delenv("SEMSEARCH_LLM_PARSE", raising=False)
+    monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", "on")  # even forced on, it can't reach eval
     # a would-SUCCEED cloud path: if mode leaked, the LLM parser would pin bedrock here
     monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-FAKE-integrity-guard")
     monkeypatch.setattr(L, "_REPO_ROOT", tmp_path / "no-repo")
@@ -104,6 +105,9 @@ def test_eval_engines_immune_to_deployment_mode(monkeypatch, tmp_path):
     rank = make_full_ranker(load_pois())  # exactly what run_eval/report_metrics build
     pipe = captured["pipe"]
     assert pipe._llm_parser is None, "mode leaked: eval queries would be LLM-enriched"
+    # SEMSEARCH_QUERY_REWRITE=on above: the switch resolves (the attribute exists) but with no
+    # LLM parser there is NO corrected_query, so no rewrite can ever reach a measured query.
+    assert hasattr(pipe, "_query_rewrite")
     assert pipe.dense is not None and pipe.dense.emb.provider == "local"
     assert pipe.mode == "local"  # measurement factories are local-by-definition
     assert rank(type("Q", (), {"input_query": "quán cà phê yên tĩnh"})())  # still ranks

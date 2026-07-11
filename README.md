@@ -82,7 +82,8 @@ cold and warm p95 separately.
   tracing on LLM calls when `LANGFUSE_*` keys are set. Every Bedrock call has a timeout and
   a coherent local fallback — no credentials means the engine runs exactly as local-only.
   Verify a setup with `uv run python scripts/check_bedrock.py`. Local `bge-m3` + the rule
-  parser remain the default demo path; **no AWS credentials required**.
+  parser (`SEMSEARCH_MODE=local`) remain a first-class, fully-offline path; **no AWS
+  credentials required**.
 
 ## Setup
 
@@ -118,13 +119,20 @@ The engine has one switch for how it sources models — `DEFAULT_MODE` in
 
 | Mode | Embeddings | LLM query parse |
 |---|---|---|
-| `local` (default) | local bge-m3 only; cloud never contacted | off (deterministic) |
+| `local` | local bge-m3 only; cloud never contacted | off (deterministic) |
 | `local-first` | local, degrading to Bedrock (cohere→titan, region chain) if bge-m3 is broken | off |
-| `cloud` | Bedrock only — local never loaded (no 2.3 GB model needed); all-fail → BM25-only floor | **on** by default (Claude, else OpenAI) |
+| `cloud` (default) | Bedrock only — local never loaded (no 2.3 GB model needed); all-fail → BM25-only floor | **on** by default (Claude, else OpenAI) |
 
 `SEMSEARCH_LLM_PARSE` always wins over the mode default: `off` forces it off, `on`/`bedrock`
 force it on (full Bedrock→OpenAI chain), `openai` forces it on pinning OpenAI directly
 (skips all Bedrock probes); unknown values warn and stay off.
+
+**Query rewrite** (`DEFAULT_QUERY_REWRITE` in `src/semsearch/config.py`, env
+`SEMSEARCH_QUERY_REWRITE=on|off`, on by default): rides the LLM parse — its `corrected_query`
+(typos fixed, diacritics restored) replaces the raw text for the rule parse, BM25, dense
+retrieval, and subject corroboration. The `query` echo stays the original; the correction is
+surfaced additively as `meta.correctedQuery` (only when it differs). Inert whenever the LLM
+parse is off/unavailable, so no measured path is affected.
 
 Remote hosting without the local model: `SEMSEARCH_MODE=cloud` plus AWS credentials
 (embeddings + Claude) and/or an OpenAI key (`OPENAI_API_KEY` or the gitignored

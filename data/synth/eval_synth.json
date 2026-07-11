@@ -1,0 +1,5078 @@
+[
+  {
+    "query_id": "SQ001",
+    "input_query": "Á Đông Hotel ở Quận 3",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0419"
+    ],
+    "expected_names": [
+      "Á Đông Hotel Lê Lợi"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Á Đông Hotel",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ002",
+    "input_query": "trung tam thuong mai phu hop gia dinh de check-in o Binh Thanh",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0503",
+      "SYN0487",
+      "SYN0433",
+      "SYN0500",
+      "SYN0454"
+    ],
+    "expected_names": [
+      "Lotte Nguyễn Đình Chiểu",
+      "Vạn Hạnh Mall Bình Thạnh",
+      "Vincom Plaza Nguyễn Công Trứ",
+      "Vincom Plaza Bình Thạnh",
+      "Chợ Lớn Plaza"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "phù hợp gia đình",
+      "check-in",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ003",
+    "input_query": "TPBank o Quan 1",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0633",
+      "SYN0630"
+    ],
+    "expected_names": [
+      "ATM TPBank - Trương Định",
+      "TPBank Quận 1"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "TPBank",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ004",
+    "input_query": "quan an co cho dau xe o Phuong 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0149",
+      "SYN0295",
+      "SYN0249",
+      "SYN0153",
+      "SYN0264"
+    ],
+    "expected_names": [
+      "Phở Gánh",
+      "Bếp Nhà Quê",
+      "Nhà Hàng Hương Sen Lê Thánh Tôn",
+      "King BBQ Phường 1",
+      "Nhà Hàng Hương Sen"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ005",
+    "input_query": "quán cà phê wifi ở Hải Châu",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "C005",
+      "SYN0084"
+    ],
+    "expected_names": [
+      "Dream Beans Coffee Đà Nẵng",
+      "Cà Phê Vườn Hoàng Diệu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "wifi",
+      "Hải Châu"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ006",
+    "input_query": "quan an tot nhat o Lien Chieu",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0174",
+      "SYN0197",
+      "SYN0272",
+      "SYN0247"
+    ],
+    "expected_names": [
+      "Nhà Hàng King BBQ Hùng Vương",
+      "Quán Chay Tịnh Tâm",
+      "Bếp Nhà Quê Lê Duẩn",
+      "Bún Chả Hàng Mành"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "chất lượng cao",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ007",
+    "input_query": "trung tam thuong mai o Phuong 4",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0509",
+      "SYN0458",
+      "SYN0526",
+      "SYN0513"
+    ],
+    "expected_names": [
+      "Sense City Plaza Phường 4",
+      "Lotte Phan Chu Trinh",
+      "Chợ Lớn Plaza",
+      "Chợ Lớn Plaza Phường 4"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "Phường 4"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ008",
+    "input_query": "Nha Tho Nui o Ba Dinh",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0764"
+    ],
+    "expected_names": [
+      "Nhà Thờ Núi Ba Đình"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Nhà Thờ Núi",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ009",
+    "input_query": "trạm xăng có bãi đỗ xe ở Thanh Khê",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0655",
+      "SYN0693",
+      "SYN0642"
+    ],
+    "expected_names": [
+      "Trạm Xăng Comeco Hai Bà Trưng",
+      "Cây Xăng PV Oil Thanh Khê",
+      "Trạm Xăng Petrolimex Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "bãi đỗ xe",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ010",
+    "input_query": "Agribank ở Bình Thạnh",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0632",
+      "SYN0538"
+    ],
+    "expected_names": [
+      "ATM Agribank Nguyễn Đình Chiểu",
+      "ATM Agribank Bình Thạnh"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Agribank",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ011",
+    "input_query": "nhà thuốc mở cửa 24/24 ở Phường 2",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0848"
+    ],
+    "expected_names": [
+      "Nhà Thuốc Minh Châu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà thuốc",
+      "24/7",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ012",
+    "input_query": "quan an o Dong Da",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0245",
+      "SYN0151",
+      "SYN0175",
+      "SYN0144",
+      "SYN0256"
+    ],
+    "expected_names": [
+      "Quán Ăn Ba Miền Đống Đa",
+      "Lẩu Dê Sáu Miền Nguyễn Du",
+      "Cơm Gà Xối Mỡ",
+      "Cơm Niêu Chợ Cũ",
+      "Pizza 4P's Điện Biên Phủ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ013",
+    "input_query": "điểm tham quan ở Thanh Khê",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0741",
+      "SYN0762",
+      "SYN0770"
+    ],
+    "expected_names": [
+      "Thác Voi Xanh Lê Thánh Tôn",
+      "Vườn Hoa Thành Phố",
+      "Đồi Thông Reo Nguyễn Công Trứ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Điểm tham quan",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ014",
+    "input_query": "nha hang o Hoan Kiem",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0145",
+      "SYN0217",
+      "R001",
+      "SYN0186",
+      "G006"
+    ],
+    "expected_names": [
+      "Quán Chay Tịnh Tâm Hoàn Kiếm",
+      "Lẩu Dê Sáu Miền Hoàn Kiếm",
+      "Nhà hàng Ngon 138",
+      "Nhà Hàng Làng Nướng",
+      "Lẩu Phố Hoàn Kiếm"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ015",
+    "input_query": "trung tam mua sam co bai do xe co wifi lon nhat o Hai Chau",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0486",
+      "SYN0452",
+      "SYN0456",
+      "SYN0435",
+      "SYN0484"
+    ],
+    "expected_names": [
+      "Sense City Plaza Nguyễn Văn Cừ",
+      "Lotte Plaza Nguyễn Du",
+      "Crescent Mall Plaza Bạch Đằng",
+      "Chợ Lớn Plaza",
+      "Sense City Plaza Hai Bà Trưng"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "bãi đỗ xe",
+      "wifi",
+      "chất lượng cao",
+      "Hải Châu"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ016",
+    "input_query": "family friendly shopping mall with wifi ở Bình Thạnh",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0487",
+      "SYN0433",
+      "SYN0454",
+      "SYN0510"
+    ],
+    "expected_names": [
+      "Vạn Hạnh Mall Bình Thạnh",
+      "Vincom Plaza Nguyễn Công Trứ",
+      "Chợ Lớn Plaza",
+      "Takashimaya Nguyễn Công Trứ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "phù hợp gia đình",
+      "wifi",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ017",
+    "input_query": "khách sạn ở Hoàn Kiếm",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0389",
+      "SYN0390",
+      "SYN0316",
+      "SYN0409",
+      "SYN0312"
+    ],
+    "expected_names": [
+      "Ngọc Lan Hotel Hoàn Kiếm",
+      "Khách Sạn Sao Mai",
+      "Nhà Nghỉ Cỏ May",
+      "Khách Sạn Long Biên",
+      "A25 Hotel Nguyễn Thị Minh Khai"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ018",
+    "input_query": "cong vien song ao dep o Tay Ho",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0829"
+    ],
+    "expected_names": [
+      "Công Viên Yên Sở Tây Hồ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Công viên",
+      "check-in",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ019",
+    "input_query": "trạm xăng ở q3",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0723",
+      "SYN0729",
+      "SYN0702",
+      "SYN0671",
+      "G031"
+    ],
+    "expected_names": [
+      "Trạm Xăng Shell Việt Trần Hưng Đạo",
+      "Cây Xăng PV Oil Quận 3",
+      "Trạm Xăng Saigon Petro Võ Văn Tần",
+      "Trạm Xăng PV Oil Quận 3",
+      "Trạm xăng Mipec Quận 3"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Abbreviation"
+    ]
+  },
+  {
+    "query_id": "SQ020",
+    "input_query": "nhà hàng phù hợp gia đình mở khyua cao cấp ở Phường 3",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "G060",
+      "SYN0286",
+      "SYN0200",
+      "SYN0219",
+      "SYN0161"
+    ],
+    "expected_names": [
+      "BBQ Garden Phường 3",
+      "Bún Chả Hàng Mành",
+      "Hải Sản Biển Đông Nguyễn Công Trứ",
+      "Nhà Hàng Đồng Quê",
+      "Nhà Hàng Đồng Quê Phường 3"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "phù hợp gia đình",
+      "mở khuya",
+      "cao cấp",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ021",
+    "input_query": "chỗ cấp cứu ban đêm ở Liên Chiểu",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0782",
+      "SYN0779",
+      "SYN0780",
+      "SYN0796"
+    ],
+    "expected_names": [
+      "Bệnh Viện Đại Học Y Lê Duẩn",
+      "Bệnh Viện Ánh Sáng Liên Chiểu",
+      "Bệnh Viện Đại Học Y",
+      "Bệnh Viện Nhi Đồng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Bệnh viện",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ022",
+    "input_query": "hiệu thuốc mở khuya ở Thanh Khê",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0859",
+      "SYN0861"
+    ],
+    "expected_names": [
+      "Long Châu Võ Văn Tần",
+      "Nhà Thuốc An Khang Lê Lợi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà thuốc",
+      "mở khuya",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ023",
+    "input_query": "trung tam thuong mai co bai do xe co wifi o Cau Gaiy",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0475",
+      "SYN0466",
+      "SYN0436",
+      "SYN0532",
+      "SYN0445"
+    ],
+    "expected_names": [
+      "Aeon Mall Plaza Cầu Giấy",
+      "Lotte Plaza Cầu Giấy",
+      "Chợ Lớn Plaza Cầu Giấy",
+      "Sense City Plaza Võ Văn Tần",
+      "Lotte Plaza Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "bãi đỗ xe",
+      "wifi",
+      "Cầu Giấy"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ024",
+    "input_query": "nha hang mo cua khuya o Quan 7",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0281",
+      "SYN0185",
+      "SYN0159",
+      "SYN0210"
+    ],
+    "expected_names": [
+      "Golden Gate Quận 7",
+      "Lẩu Dê Sáu Miền",
+      "Món Huế Trần Hưng Đạo",
+      "Cơm Niêu Chợ Cũ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "mở khuya",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ025",
+    "input_query": "trung tam mua sam co wifi o Quan 7",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0481",
+      "SYN0480",
+      "SYN0489",
+      "SYN0520"
+    ],
+    "expected_names": [
+      "Vincom Quận 7",
+      "Gigamall Plaza Quận 7",
+      "Crescent Mall Plaza Nguyễn Trãi",
+      "Trung Tâm Thương Mại Sài Gòn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "wifi",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ026",
+    "input_query": "khách sạn ở Ba Đình",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "G007",
+      "SYN0342",
+      "SYN0329",
+      "SYN0359",
+      "SYN0313",
+      "SYN0408"
+    ],
+    "expected_names": [
+      "Holiday Ba Đình",
+      "Khách Sạn Fusion Trương Định",
+      "Khách Sạn A25 Hotel Ba Đình",
+      "Hoa Đăng Hotel",
+      "Khách Sạn Thủy Tiên",
+      "Mộc Miên Homestay"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ027",
+    "input_query": "khach san co cho dau xe tot nhat o Phuong 3",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0397",
+      "SYN0370",
+      "SYN0383",
+      "SYN0356",
+      "SYN0365",
+      "SYN0324"
+    ],
+    "expected_names": [
+      "Fusion Phường 3",
+      "Sen Homestay",
+      "Khách Sạn Phương Đông",
+      "Grand Hotel Phường 3",
+      "Khách Sạn Ban Mai",
+      "Sen Homestay Phường 3"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "bãi đỗ xe",
+      "chất lượng cao",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ028",
+    "input_query": "quan ca phe wifi de check-in o Ba Dinh",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0047",
+      "SYN0136",
+      "SYN0125",
+      "SYN0126"
+    ],
+    "expected_names": [
+      "Cà Phê Gió",
+      "Cộng Cà Phê Coffee Phạm Ngũ Lão",
+      "Aha Cafe Ba Đình",
+      "Trung Nguyên Legend Phan Đình Phùng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "wifi",
+      "check-in",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ029",
+    "input_query": "khach san co cho dau xe sagn trong o Phuong 3",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0397",
+      "SYN0370",
+      "SYN0324",
+      "SYN0356",
+      "SYN0365",
+      "SYN0383"
+    ],
+    "expected_names": [
+      "Fusion Phường 3",
+      "Sen Homestay",
+      "Sen Homestay Phường 3",
+      "Grand Hotel Phường 3",
+      "Khách Sạn Ban Mai",
+      "Khách Sạn Phương Đông"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "bãi đỗ xe",
+      "cao cấp",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ030",
+    "input_query": "quán cà phê sang trọng ở Linê Chiểu",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0004",
+      "SYN0099",
+      "SYN0005",
+      "SYN0132",
+      "SYN0045",
+      "SYN0140"
+    ],
+    "expected_names": [
+      "Thềm Xưa Cafe Liên Chiểu",
+      "Mộc Coffee Liên Chiểu",
+      "Cà Phê Yên Liên Chiểu",
+      "Cà Phê Sân Vườn",
+      "The Coffee House Coffee Lê Thánh Tôn",
+      "Highlands Coffee Trần Hưng Đạo"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "cao cấp",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ031",
+    "input_query": "Nhà Hàng Sen Vàng ở uQận 3",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0236"
+    ],
+    "expected_names": [
+      "Nhà Hàng Sen Vàng"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Nhà Hàng Sen Vàng",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ032",
+    "input_query": "cay ATM 24/7 co cho dau xe o Hoan Kiem",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0635",
+      "SYN0569",
+      "SYN0581",
+      "SYN0603",
+      "SYN0592",
+      "SYN0546",
+      "SYN0582"
+    ],
+    "expected_names": [
+      "Sacombank Điện Biên Phủ",
+      "ATM Agribank Hoàn Kiếm",
+      "MB Bank Hoàn Kiếm",
+      "ACB Nguyễn Thị Minh Khai",
+      "BIDV Hoàn Kiếm",
+      "Techcombank Nguyễn Thị Minh Khai",
+      "ATM SHB - Bạch Đằng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "bãi đỗ xe",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ033",
+    "input_query": "trung tâm thương mại có chỗ đậu xe wifi ở Bình Thạnh",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0451",
+      "SYN0487",
+      "SYN0433",
+      "SYN0454",
+      "SYN0510"
+    ],
+    "expected_names": [
+      "Gigamall Plaza Hai Bà Trưng",
+      "Vạn Hạnh Mall Bình Thạnh",
+      "Vincom Plaza Nguyễn Công Trứ",
+      "Chợ Lớn Plaza",
+      "Takashimaya Nguyễn Công Trứ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "bãi đỗ xe",
+      "wifi",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ034",
+    "input_query": "noi rut tein tien loi 24/7 co cho dau xe o Phuong 1",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0627",
+      "SYN0572",
+      "SYN0620",
+      "SYN0610",
+      "SYN0568",
+      "SYN0561"
+    ],
+    "expected_names": [
+      "ATM TPBank Phường 1",
+      "ATM BIDV Phường 1",
+      "VPBank Phường 1",
+      "ATM SHB - Hai Bà Trưng",
+      "ATM VietinBank Phan Đình Phùng",
+      "Sacombank Nguyễn Đình Chiểu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "bãi đỗ xe",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ035",
+    "input_query": "khách sạn có chỗ đậu xe yên tĩnh lãng mạn ở Thủ Đức",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0355",
+      "SYN0350",
+      "SYN0401",
+      "SYN0369",
+      "SYN0311",
+      "SYN0308"
+    ],
+    "expected_names": [
+      "Khách Sạn Phương Đông Thủ Đức",
+      "Grand Hotel Thủ Đức",
+      "Khách Sạn Đông Đô Hùng Vương",
+      "Khách Sạn Phương Đông Trần Hưng Đạo",
+      "Grand Hotel Thủ Đức",
+      "Hoa Đăng Hotel Thủ Đức"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "bãi đỗ xe",
+      "yên tĩnh",
+      "lãng mạn",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ036",
+    "input_query": "cong vien phu hop gia dinh o Quan 3",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0828"
+    ],
+    "expected_names": [
+      "Công Viên Cây Xanh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Công viên",
+      "phù hợp gia đình",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ037",
+    "input_query": "quan ca phe ngon nhat o Thanh Khe",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0052",
+      "SYN0128",
+      "G037",
+      "SYN0026"
+    ],
+    "expected_names": [
+      "Nhà Của Mây",
+      "Góc Phố Coffee",
+      "Cộng Cà Phê Thanh Khê",
+      "The Coffee House Phạm Ngũ Lão"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "chất lượng cao",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ038",
+    "input_query": "cây ATM 24/7 ở Hòa Vang",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0567",
+      "SYN0550",
+      "SYN0551",
+      "SYN0623",
+      "SYN0548",
+      "SYN0540"
+    ],
+    "expected_names": [
+      "ATM TPBank Hòa Vang",
+      "ATM ACB - Hòa Vang",
+      "ATM VPBank - Hòa Vang",
+      "ATM ACB Cách Mạng Tháng Tám",
+      "MB Bank Hòa Vang",
+      "ATM Đông Á Bank - Hòa Vang"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ039",
+    "input_query": "trung tam thuong mai co wifi o Quan 7",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0481",
+      "SYN0480",
+      "SYN0489",
+      "SYN0520"
+    ],
+    "expected_names": [
+      "Vincom Quận 7",
+      "Gigamall Plaza Quận 7",
+      "Crescent Mall Plaza Nguyễn Trãi",
+      "Trung Tâm Thương Mại Sài Gòn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "wifi",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ040",
+    "input_query": "rap chieu phim mo khuya o iBnh Thanh",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0825",
+      "SYN0805",
+      "SYN0817",
+      "SYN0800"
+    ],
+    "expected_names": [
+      "Galaxy Cinema - Bình Thạnh",
+      "BHD Star - Lê Thánh Tôn",
+      "Lotte Cinema Bình Thạnh",
+      "CGV Nguyễn Công Trứ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Rạp phim",
+      "mở khuya",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ041",
+    "input_query": "nhà hàng có chỗ đậu xe ở Phường 8",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0160",
+      "SYN0241",
+      "SYN0288",
+      "SYN0257",
+      "SYN0171"
+    ],
+    "expected_names": [
+      "Nhà Hàng Ngon",
+      "Nhà Hàng Món Huế Phường 8",
+      "Món Huế Phường 8",
+      "Quán Nướng Lá Chuối",
+      "Cơm Tấm Cô Ba"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ042",
+    "input_query": "quán acfe ở Ngũ Hành Sơn",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0143",
+      "SYN0135",
+      "SYN0096",
+      "SYN0029"
+    ],
+    "expected_names": [
+      "Cà Phê Đỏ",
+      "Bụi Coffee Nguyễn Du",
+      "Trung Nguyên Legend Coffee Trần Hưng Đạo",
+      "The Coffee House Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ043",
+    "input_query": "quan an co bai do xe phu hop gia dinh de hen ho mo khuya o Quan 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0226",
+      "SYN0253",
+      "SYN0271",
+      "SYN0270",
+      "SYN0285",
+      "SYN0299"
+    ],
+    "expected_names": [
+      "Quán Chay Tịnh Tâm",
+      "Nhà Hàng Đồng Quê",
+      "Bếp Nhà Quê",
+      "Cơm Tấm Cô Ba",
+      "Nhà Hàng Phố Biển",
+      "Sushi House Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "phù hợp gia đình",
+      "lãng mạn",
+      "mở khuya",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ044",
+    "input_query": "PV Oil ở Thanh Khê",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0693"
+    ],
+    "expected_names": [
+      "Cây Xăng PV Oil Thanh Khê"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "PV Oil",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ045",
+    "input_query": "nhà hàng mở khuya ở hPường 2",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0289",
+      "SYN0282",
+      "SYN0273",
+      "SYN0225",
+      "SYN0183",
+      "SYN0192"
+    ],
+    "expected_names": [
+      "Cơm Gà Xối Mỡ Phường 2",
+      "Quán Ăn Ba Miền Phường 2",
+      "Lẩu Dê Sáu Miền Phường 2",
+      "Nhà Hàng Golden Gate Phạm Ngũ Lão",
+      "Lẩu Dê Sáu Miền",
+      "Nhà Hàng Làng Nướng Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "mở khuya",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ046",
+    "input_query": "ATM 24/7 o Thanh Khe",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0553",
+      "SYN0598",
+      "SYN0549",
+      "SYN0537",
+      "SYN0596",
+      "SYN0583"
+    ],
+    "expected_names": [
+      "Techcombank Điện Biên Phủ",
+      "VPBank Pasteur",
+      "ATM Sacombank - Thanh Khê",
+      "ATM Sacombank - Thanh Khê",
+      "ATM Vietcombank Trần Quốc Toản",
+      "ATM Sacombank - Nguyễn Văn Cừ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ047",
+    "input_query": "khach san cho gia dinh o Quan 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0321",
+      "SYN0398",
+      "SYN0325",
+      "SYN0336",
+      "SYN0395",
+      "SYN0374"
+    ],
+    "expected_names": [
+      "Hoa Đăng Hotel",
+      "Khách Sạn Ánh Dương",
+      "Khách Sạn Phương Đông",
+      "Khách Sạn Hoàng Gia",
+      "Nhà Nghỉ Cỏ May Quận 1",
+      "Khách Sạn Hải Âu Hai Bà Trưng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "phù hợp gia đình",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ048",
+    "input_query": "khách sạn lãng mạn ở Phường 2",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0381",
+      "SYN0371",
+      "SYN0422",
+      "SYN0300",
+      "SYN0337"
+    ],
+    "expected_names": [
+      "Vinpearl Phạm Ngũ Lão",
+      "Hương Biển Resort Phường 2",
+      "Khách Sạn Fusion Lý Thường Kiệt",
+      "Khách Sạn A25 Hotel Phường 2",
+      "Khách Sạn Mường Thanh Phường 2"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "lãng mạn",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ049",
+    "input_query": "cây xăng ở Tây Hồ",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0712",
+      "SYN0733",
+      "SYN0668",
+      "SYN0682"
+    ],
+    "expected_names": [
+      "Cây Xăng PV Oil Tây Hồ",
+      "Trạm Xăng Petrolimex Tây Hồ",
+      "Trạm Xăng Nam Sông Hậu Tây Hồ",
+      "Cây Xăng PV Oil Tây Hồ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ050",
+    "input_query": "địa điểm tham quan gần biển ở Hòa Vang",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0769"
+    ],
+    "expected_names": [
+      "Đền Ngọc Hoàng Hoàng Diệu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Điểm tham quan",
+      "gần biển",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ051",
+    "input_query": "uqán cafe để check-in ở Hòa Vang",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0133",
+      "SYN0134",
+      "SYN0118",
+      "SYN0121",
+      "SYN0008"
+    ],
+    "expected_names": [
+      "Cà Phê Sách",
+      "The Coffee House Nguyễn Công Trứ",
+      "Phúc Long Trần Hưng Đạo",
+      "Cà Phê Yên",
+      "Cà Phê Gió"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "check-in",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ052",
+    "input_query": "Katinat ở q3",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0091"
+    ],
+    "expected_names": [
+      "Katinat Coffee Quận 3"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Katinat",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Abbreviation"
+    ]
+  },
+  {
+    "query_id": "SQ053",
+    "input_query": "nha hang mo khuya ngno nhat o Phuong 2",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0289",
+      "SYN0282",
+      "SYN0273",
+      "SYN0225",
+      "SYN0183",
+      "SYN0192"
+    ],
+    "expected_names": [
+      "Cơm Gà Xối Mỡ Phường 2",
+      "Quán Ăn Ba Miền Phường 2",
+      "Lẩu Dê Sáu Miền Phường 2",
+      "Nhà Hàng Golden Gate Phạm Ngũ Lão",
+      "Lẩu Dê Sáu Miền",
+      "Nhà Hàng Làng Nướng Lê Thánh Tôn"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "mở khuya",
+      "chất lượng cao",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ054",
+    "input_query": "khách sạn có wifi lãng mạn ở Thủ Đức",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0355",
+      "SYN0416",
+      "SYN0369",
+      "SYN0311",
+      "SYN0308",
+      "SYN0376",
+      "SYN0364"
+    ],
+    "expected_names": [
+      "Khách Sạn Phương Đông Thủ Đức",
+      "Ngọc Lan Hotel",
+      "Khách Sạn Phương Đông Trần Hưng Đạo",
+      "Grand Hotel Thủ Đức",
+      "Hoa Đăng Hotel Thủ Đức",
+      "Khách Sạn Hải Âu",
+      "Á Đông Hotel Thủ Đức"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "wifi",
+      "lãng mạn",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ055",
+    "input_query": "benh vien o Binh Tahnh",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0785",
+      "S006"
+    ],
+    "expected_names": [
+      "Bệnh Viện Đa Khoa Sài Gòn",
+      "Bệnh viện Vinmec Central Park"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Bệnh viện",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ056",
+    "input_query": "trạm sạc điện 24/7 ở Bình Thạnh",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0871",
+      "SYN0875"
+    ],
+    "expected_names": [
+      "Trạm Sạc VuPhong Lê Duẩn",
+      "Trạm Sạc Selex Pasteur"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm sạc điện",
+      "24/7",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ057",
+    "input_query": "cây xăng 24/7 có chỗ đậu xe 24/7 ở Quận 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0730",
+      "SYN0641",
+      "SYN0707",
+      "SYN0678",
+      "SYN0736",
+      "SYN0719"
+    ],
+    "expected_names": [
+      "Trạm Xăng Petrolimex Quận 1",
+      "Cây Xăng Nam Sông Hậu Phan Chu Trinh",
+      "Cây Xăng Nam Sông Hậu Quận 1",
+      "Cây Xăng Mipec Quận 1",
+      "Trạm Xăng Comeco Lê Thánh Tôn",
+      "Cây Xăng Saigon Petro Hùng Vương"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "24/7",
+      "bãi đỗ xe",
+      "24/7",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ058",
+    "input_query": "cho sac pin o to dien o Phuong 8",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0872",
+      "SYN0877"
+    ],
+    "expected_names": [
+      "Trạm Sạc Xe Điện Xanh",
+      "Trạm Sạc VuPhong Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm sạc điện",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ059",
+    "input_query": "nhà hnàg có chỗ đậu xe để hẹn hò ở Phường 2",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0289",
+      "SYN0282",
+      "SYN0273",
+      "SYN0192"
+    ],
+    "expected_names": [
+      "Cơm Gà Xối Mỡ Phường 2",
+      "Quán Ăn Ba Miền Phường 2",
+      "Lẩu Dê Sáu Miền Phường 2",
+      "Nhà Hàng Làng Nướng Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "lãng mạn",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ060",
+    "input_query": "trung tam mua sam co wifi o Binh Thanh",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0451",
+      "SYN0487",
+      "SYN0433",
+      "SYN0454",
+      "SYN0510"
+    ],
+    "expected_names": [
+      "Gigamall Plaza Hai Bà Trưng",
+      "Vạn Hạnh Mall Bình Thạnh",
+      "Vincom Plaza Nguyễn Công Trứ",
+      "Chợ Lớn Plaza",
+      "Takashimaya Nguyễn Công Trứ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "wifi",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ061",
+    "input_query": "rtạm xăng ở Quận 3",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0723",
+      "SYN0729",
+      "SYN0702",
+      "SYN0671",
+      "G031"
+    ],
+    "expected_names": [
+      "Trạm Xăng Shell Việt Trần Hưng Đạo",
+      "Cây Xăng PV Oil Quận 3",
+      "Trạm Xăng Saigon Petro Võ Văn Tần",
+      "Trạm Xăng PV Oil Quận 3",
+      "Trạm xăng Mipec Quận 3"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ062",
+    "input_query": "chỗ nghỉ chân qua đêm phù hợp gia đình ở Tây Hồ",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0332",
+      "SYN0412",
+      "SYN0344",
+      "SYN0319",
+      "SYN0306",
+      "SYN0385"
+    ],
+    "expected_names": [
+      "Khách Sạn Hoàng Gia Tây Hồ",
+      "Ngọc Lan Hotel",
+      "Ngọc Lan Hotel Pasteur",
+      "Khách Sạn Sao Mai Tây Hồ",
+      "Khách Sạn Bình Minh Tây Hồ",
+      "Khách Sạn Đông Đô"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "phù hợp gia đình",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ063",
+    "input_query": "noi rut tien tien loi 24/7 co cho dau xe o Dong Da",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0575",
+      "SYN0570",
+      "SYN0535",
+      "SYN0600",
+      "SYN0579",
+      "SYN0541"
+    ],
+    "expected_names": [
+      "ATM BIDV Lý Thường Kiệt",
+      "ATM Techcombank - Nguyễn Đình Chiểu",
+      "ATM TPBank - Lê Duẩn",
+      "ATM BIDV Đống Đa",
+      "ATM VPBank Đống Đa",
+      "SHB Đống Đa"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "bãi đỗ xe",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ064",
+    "input_query": "khách sạn wifi phù hợp gia đình ở Quận 7",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0347",
+      "SYN0378",
+      "SYN0367",
+      "SYN0351",
+      "SYN0404",
+      "SYN0362",
+      "SYN0407"
+    ],
+    "expected_names": [
+      "Grand Hotel Quận 7",
+      "Á Đông Hotel Quận 7",
+      "Khách Sạn Hoàng Gia",
+      "Mộc Miên Homestay Trương Định",
+      "Nhà Nghỉ Cỏ May",
+      "Mường Thanh Nguyễn Du",
+      "Khách Sạn Đông Đô Trần Quốc Toản"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "wifi",
+      "phù hợp gia đình",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ065",
+    "input_query": "Sacombank ở Liên Chiểu",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0593"
+    ],
+    "expected_names": [
+      "ATM Sacombank Phan Đình Phùng"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Sacombank",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ066",
+    "input_query": "nhà hàng có bãi đỗ xe cao cấp ở Thủ Đức",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0202",
+      "SYN0191",
+      "SYN0211",
+      "SYN0227",
+      "SYN0170",
+      "SYN0234"
+    ],
+    "expected_names": [
+      "Sushi House Pasteur",
+      "Quán Ăn Ba Miền",
+      "Nhà Hàng Wrap & Roll Hoàng Diệu",
+      "Nhà Hàng Wrap & Roll Bạch Đằng",
+      "Nhà Hàng Sushi House Phan Chu Trinh",
+      "Nhà Hàng Phố Biển"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "cao cấp",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ067",
+    "input_query": "Nha Nghi Co May o Quan 1",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0358",
+      "SYN0395"
+    ],
+    "expected_names": [
+      "Nhà Nghỉ Cỏ May",
+      "Nhà Nghỉ Cỏ May Quận 1"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Nhà Nghỉ Cỏ May",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ068",
+    "input_query": "Trung Tâm Thương Mại Sài Gòn ở Phường 2",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0523"
+    ],
+    "expected_names": [
+      "Trung Tâm Thương Mại Sài Gòn Lê Duẩn"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Trung Tâm Thương Mại Sài Gòn",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ069",
+    "input_query": "Nha Hang Lang Nuong o Quan 3",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0216"
+    ],
+    "expected_names": [
+      "Nhà Hàng Làng Nướng Quận 3"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Nhà Hàng Làng Nướng",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ070",
+    "input_query": "uqan ca phe wifi de check-in o Hai Ba Trung",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0142",
+      "SYN0106",
+      "SYN0055",
+      "SYN0120"
+    ],
+    "expected_names": [
+      "Góc Phố Coffee",
+      "Phúc Long Nguyễn Đình Chiểu",
+      "Lặng Coffee",
+      "Cà Phê Sách Pasteur"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "wifi",
+      "check-in",
+      "Hai Bà Trưng"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ071",
+    "input_query": "trugn tam mua sam o Ngu Hanh Son",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "G054",
+      "SYN0460",
+      "SYN0524",
+      "SYN0474",
+      "SYN0508"
+    ],
+    "expected_names": [
+      "Lotte Mall Ngũ Hành Sơn",
+      "Vincom Plaza Ngũ Hành Sơn",
+      "Gigamall Ngũ Hành Sơn",
+      "Trung Tâm Mua Sắm Thủ Đô",
+      "Đông Đô Plaza Ngũ Hành Sơn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ072",
+    "input_query": "trung tâm mua sắm phù hợp gia đình ở Hòa Vang",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0515",
+      "SYN0467",
+      "SYN0501",
+      "SYN0525"
+    ],
+    "expected_names": [
+      "Parkson Hòa Vang",
+      "Aeon Mall Hòa Vang",
+      "Sense City Plaza Hoàng Diệu",
+      "Sense City Nguyễn Du"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "phù hợp gia đình",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ073",
+    "input_query": "khach san yen tinh wifi o Thu Duc",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0355",
+      "SYN0382",
+      "SYN0415",
+      "SYN0369",
+      "SYN0311",
+      "SYN0308"
+    ],
+    "expected_names": [
+      "Khách Sạn Phương Đông Thủ Đức",
+      "Khách Sạn Ban Mai",
+      "Á Đông Hotel",
+      "Khách Sạn Phương Đông Trần Hưng Đạo",
+      "Grand Hotel Thủ Đức",
+      "Hoa Đăng Hotel Thủ Đức"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "yên tĩnh",
+      "wifi",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ074",
+    "input_query": "qáun cà phê để check-in ở Ngũ Hành Sơn",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0143",
+      "SYN0135",
+      "SYN0096",
+      "SYN0029"
+    ],
+    "expected_names": [
+      "Cà Phê Đỏ",
+      "Bụi Coffee Nguyễn Du",
+      "Trung Nguyên Legend Coffee Trần Hưng Đạo",
+      "The Coffee House Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "check-in",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ075",
+    "input_query": "nơi hẹn hò lãng mạn buổi tối ở Sơn Trà",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0287",
+      "SYN0187",
+      "SYN0237",
+      "G041",
+      "G042"
+    ],
+    "expected_names": [
+      "Nhà Hàng Pizza 4P's Lý Thường Kiệt",
+      "Nhà Hàng Hương Sen",
+      "Nhà Hàng Hotpot Story Sơn Trà",
+      "Quán Ngon Sơn Trà",
+      "Bếp Việt Sơn Trà"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "lãng mạn",
+      "Sơn Trà"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ076",
+    "input_query": "trung tâm mua sắm phù hợp gia đình ở Hải Châu",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0486",
+      "SYN0452",
+      "SYN0456",
+      "SYN0435",
+      "SYN0494"
+    ],
+    "expected_names": [
+      "Sense City Plaza Nguyễn Văn Cừ",
+      "Lotte Plaza Nguyễn Du",
+      "Crescent Mall Plaza Bạch Đằng",
+      "Chợ Lớn Plaza",
+      "Crescent Mall Plaza Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "phù hợp gia đình",
+      "Hải Châu"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ077",
+    "input_query": "Thai Binh Hotel o Phuong 8",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0345"
+    ],
+    "expected_names": [
+      "Thái Bình Hotel"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Thái Bình Hotel",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ078",
+    "input_query": "cây xăng 24/7 ở Sơn Trà",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0645",
+      "SYN0648",
+      "SYN0724",
+      "SYN0656",
+      "SYN0665",
+      "SYN0667"
+    ],
+    "expected_names": [
+      "Trạm Xăng Saigon Petro Phan Đình Phùng",
+      "Cây Xăng Mipec Sơn Trà",
+      "Trạm Xăng PV Oil Cách Mạng Tháng Tám",
+      "Trạm Xăng Nam Sông Hậu Bạch Đằng",
+      "Cây Xăng Nam Sông Hậu Võ Văn Tần",
+      "Cây Xăng Saigon Petro Sơn Trà"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "24/7",
+      "Sơn Trà"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ079",
+    "input_query": "gas station with parking ở Bình Thạnh",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0639",
+      "SYN0696",
+      "SYN0658",
+      "SYN0651",
+      "SYN0640",
+      "SYN0675"
+    ],
+    "expected_names": [
+      "Cây Xăng PV Oil Bình Thạnh",
+      "Trạm Xăng Shell Việt Bình Thạnh",
+      "Cây Xăng Saigon Petro Bình Thạnh",
+      "Trạm Xăng Nam Sông Hậu Bình Thạnh",
+      "Cây Xăng PV Oil Bình Thạnh",
+      "Cây Xăng Saigon Petro Nguyễn Du"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "bãi đỗ xe",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ080",
+    "input_query": "Trung Tam Mua Sam Thu Do o Phuong 8",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0482"
+    ],
+    "expected_names": [
+      "Trung Tâm Mua Sắm Thủ Đô Bạch Đằng"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Trung Tâm Mua Sắm Thủ Đô",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ081",
+    "input_query": "trụ ATM ở Cầu Giấy",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0629",
+      "G011",
+      "SYN0564",
+      "SYN0542",
+      "SYN0557"
+    ],
+    "expected_names": [
+      "SHB Nguyễn Thị Minh Khai",
+      "Techcombank Cầu Giấy",
+      "ATM SHB - Nguyễn Văn Cừ",
+      "ATM ACB - Trần Phú",
+      "ATM SHB Cầu Giấy"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "Cầu Giấy"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ082",
+    "input_query": "cay xang o Hai Ba Trung",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0664",
+      "SYN0699",
+      "SYN0731",
+      "SYN0705"
+    ],
+    "expected_names": [
+      "Cây Xăng Mipec Bạch Đằng",
+      "Cây Xăng Shell Việt Hai Bà Trưng",
+      "Trạm Xăng Nam Sông Hậu Hai Bà Trưng",
+      "Cây Xăng Saigon Petro Trương Định"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Hai Bà Trưng"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ083",
+    "input_query": "tram xang mo cua 24/24 o Phuong 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0716",
+      "SYN0691",
+      "G067"
+    ],
+    "expected_names": [
+      "Cây Xăng Saigon Petro Bạch Đằng",
+      "Trạm Xăng Mipec Phường 1",
+      "Trạm xăng Mipec Phường 1"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "24/7",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ084",
+    "input_query": "trạm xnăg ở Phường 1",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0716",
+      "SYN0691",
+      "G067"
+    ],
+    "expected_names": [
+      "Cây Xăng Saigon Petro Bạch Đằng",
+      "Trạm Xăng Mipec Phường 1",
+      "Trạm xăng Mipec Phường 1"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ085",
+    "input_query": "nha hang phu hop gia dinh o Ngu Hanh Son",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0291",
+      "SYN0265",
+      "SYN0296",
+      "SYN0176"
+    ],
+    "expected_names": [
+      "Nhà Hàng Hương Sen Nguyễn Đình Chiểu",
+      "Quán Nướng Lá Chuối",
+      "Hotpot Story Hai Bà Trưng",
+      "Hải Sản Biển Đông Ngũ Hành Sơn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "phù hợp gia đình",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ086",
+    "input_query": "nhà hàng lãng mạn mở khuya ở Phường 4",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0261",
+      "SYN0190",
+      "SYN0195",
+      "SYN0228",
+      "SYN0292",
+      "SYN0148"
+    ],
+    "expected_names": [
+      "Quán Chay Tịnh Tâm Lê Thánh Tôn",
+      "Nhà Hàng Sen Vàng",
+      "King BBQ Phường 4",
+      "Nhà Hàng Hotpot Story Phường 4",
+      "Nhà Hàng Ngon",
+      "Nhà Hàng Đồng Quê"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "lãng mạn",
+      "mở khuya",
+      "Phường 4"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ087",
+    "input_query": "nhà hàng có bãi đỗ xe mở khuya ở Quận 1",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0226",
+      "SYN0253",
+      "SYN0271",
+      "SYN0270",
+      "SYN0285",
+      "SYN0299"
+    ],
+    "expected_names": [
+      "Quán Chay Tịnh Tâm",
+      "Nhà Hàng Đồng Quê",
+      "Bếp Nhà Quê",
+      "Cơm Tấm Cô Ba",
+      "Nhà Hàng Phố Biển",
+      "Sushi House Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "bãi đỗ xe",
+      "mở khuya",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ088",
+    "input_query": "tru ATM 24/7 o Son Tra",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0563",
+      "SYN0622",
+      "SYN0547",
+      "SYN0607",
+      "G048",
+      "SYN0594"
+    ],
+    "expected_names": [
+      "ATM Vietcombank Hoàng Diệu",
+      "BIDV Sơn Trà",
+      "MB Bank Lý Thường Kiệt",
+      "ATM VietinBank Lý Thường Kiệt",
+      "VPBank Sơn Trà",
+      "ATM Agribank - Phan Chu Trinh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "24/7",
+      "Sơn Trà"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ089",
+    "input_query": "trung tâm thương mại có chỗ đậu xe để check-in ở Cầu Giấy",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0470",
+      "SYN0475",
+      "SYN0466",
+      "SYN0439",
+      "SYN0532"
+    ],
+    "expected_names": [
+      "Gigamall Plaza Cầu Giấy",
+      "Aeon Mall Plaza Cầu Giấy",
+      "Lotte Plaza Cầu Giấy",
+      "Chợ Lớn Plaza",
+      "Sense City Plaza Võ Văn Tần"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "bãi đỗ xe",
+      "check-in",
+      "Cầu Giấy"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ090",
+    "input_query": "chỗ ngồi học bài yên tĩnh cả ngày ở Phường 2",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0059",
+      "SYN0093",
+      "SYN0080",
+      "SYN0088",
+      "SYN0123",
+      "SYN0013"
+    ],
+    "expected_names": [
+      "Cà Phê Thơ",
+      "Phúc Long Lý Thường Kiệt",
+      "Mộc Coffee",
+      "Katinat Phường 2",
+      "Cà Phê Cũ Phường 2",
+      "An Nhiên Cafe"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "yên tĩnh",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ091",
+    "input_query": "trụ ATM ở Quận 3",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0577",
+      "SYN0602",
+      "G030",
+      "G029"
+    ],
+    "expected_names": [
+      "SHB Trần Quốc Toản",
+      "BIDV Nguyễn Văn Cừ",
+      "Techcombank Quận 3",
+      "VPBank Quận 3"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ092",
+    "input_query": "Galxay Cinema o Binh Thanh",
+    "query_category": "POI Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0825"
+    ],
+    "expected_names": [
+      "Galaxy Cinema - Bình Thạnh"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Galaxy Cinema",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ093",
+    "input_query": "trung tam thuong mai wiif o Quan 1",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0522",
+      "SYN0518",
+      "SYN0468",
+      "SYN0446",
+      "SYN0473"
+    ],
+    "expected_names": [
+      "Aeon Mall Plaza Quận 1",
+      "Sense City Plaza Trần Quốc Toản",
+      "Trung Tâm Mua Sắm Thủ Đô",
+      "Vincom Plaza Quận 1",
+      "Vạn Hạnh Mall Plaza Quận 1"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "wifi",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ094",
+    "input_query": "Khách Sạn Hoàng Gia ở Quận 1",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0336"
+    ],
+    "expected_names": [
+      "Khách Sạn Hoàng Gia"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Khách Sạn Hoàng Gia",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ095",
+    "input_query": "khach san yen tinh o Tay Ho",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0332",
+      "SYN0412",
+      "SYN0344",
+      "SYN0306",
+      "SYN0385"
+    ],
+    "expected_names": [
+      "Khách Sạn Hoàng Gia Tây Hồ",
+      "Ngọc Lan Hotel",
+      "Ngọc Lan Hotel Pasteur",
+      "Khách Sạn Bình Minh Tây Hồ",
+      "Khách Sạn Đông Đô"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "yên tĩnh",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ096",
+    "input_query": "hieu thuoc o Ba Dinh",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0863"
+    ],
+    "expected_names": [
+      "Hiệu Thuốc Ngọc Anh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà thuốc",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ097",
+    "input_query": "qáun cafe yên tĩnh ở Phường 8",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0001",
+      "SYN0066",
+      "SYN0033",
+      "SYN0087"
+    ],
+    "expected_names": [
+      "Cỏ Cây Coffee",
+      "Cà Phê Đỏ Phường 8",
+      "Cà Phê Vườn Phan Chu Trinh",
+      "Sương Mai Coffee Phan Đình Phùng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "yên tĩnh",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ098",
+    "input_query": "Ngọc Lan Hotle ở Quận 3",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0303"
+    ],
+    "expected_names": [
+      "Ngọc Lan Hotel"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Ngọc Lan Hotel",
+      "Quận 3"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ099",
+    "input_query": "cây xăng có chỗ đậu xe 24/7 ở Hoàn Kiếm",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0710",
+      "SYN0677",
+      "SYN0681",
+      "SYN0685",
+      "SYN0652",
+      "SYN0695",
+      "SYN0679",
+      "SYN0726"
+    ],
+    "expected_names": [
+      "Trạm Xăng PV Oil Hoàn Kiếm",
+      "Cây Xăng PV Oil Lê Thánh Tôn",
+      "Trạm Xăng Petrolimex Pasteur",
+      "Cây Xăng Shell Việt Hùng Vương",
+      "Trạm Xăng PV Oil Phan Đình Phùng",
+      "Trạm Xăng Petrolimex Trần Quốc Toản",
+      "Cây Xăng Petrolimex Hoàn Kiếm",
+      "Trạm Xăng Shell Việt Hoàn Kiếm"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "bãi đỗ xe",
+      "24/7",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ100",
+    "input_query": "nhà hàng mở khuya để hẹn hò giá rẻ ở Ba Đình",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0278",
+      "SYN0212",
+      "SYN0163",
+      "SYN0266",
+      "SYN0229",
+      "SYN0196",
+      "SYN0166",
+      "SYN0152"
+    ],
+    "expected_names": [
+      "Nhà Hàng Hương Sen",
+      "Lẩu Nấm Rừng",
+      "Quán Chay Tịnh Tâm",
+      "Quán Ăn Ba Miền Ba Đình",
+      "Nhà Hàng Hương Sen Nguyễn Trãi",
+      "Nhà Hàng Hotpot Story Ba Đình",
+      "Nhà Hàng Hương Sen",
+      "Nhà Hàng Ngon"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "mở khuya",
+      "lãng mạn",
+      "giá rẻ",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ101",
+    "input_query": "trụ ATM ở q7",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0584",
+      "SYN0556",
+      "SYN0617",
+      "SYN0545",
+      "SYN0637"
+    ],
+    "expected_names": [
+      "ATM Đông Á Bank Võ Văn Tần",
+      "ATM Techcombank - Nguyễn Đình Chiểu",
+      "MB Bank Quận 7",
+      "ACB Quận 7",
+      "ATM ACB Quận 7"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Abbreviation"
+    ]
+  },
+  {
+    "query_id": "SQ102",
+    "input_query": "quan ca phe yen tinh lang man gia re o Cau Giay",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0113",
+      "SYN0071",
+      "SYN0054",
+      "SYN0114"
+    ],
+    "expected_names": [
+      "Cà Phê Thơ",
+      "Bụi Coffee",
+      "Cỏ Cây Coffee",
+      "Góc Phố Coffee Cầu Giấy"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "yên tĩnh",
+      "lãng mạn",
+      "giá rẻ",
+      "Cầu Giấy"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ103",
+    "input_query": "ATM co cho dau xe o Phuong 1",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0627",
+      "SYN0572",
+      "SYN0620",
+      "SYN0610",
+      "SYN0568",
+      "SYN0561"
+    ],
+    "expected_names": [
+      "ATM TPBank Phường 1",
+      "ATM BIDV Phường 1",
+      "VPBank Phường 1",
+      "ATM SHB - Hai Bà Trưng",
+      "ATM VietinBank Phan Đình Phùng",
+      "Sacombank Nguyễn Đình Chiểu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "bãi đỗ xe",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ104",
+    "input_query": "nhà thuốc 24/7 ở Liên Chiểu",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0853",
+      "SYN0851"
+    ],
+    "expected_names": [
+      "Nhà Thuốc Long Châu Liên Chiểu",
+      "Hiệu Thuốc Ngọc Anh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà thuốc",
+      "24/7",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ105",
+    "input_query": "quán ăn iwfi có chỗ đậu xe cho gia đình mở khuya tốt nhất ở Ba Đình",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0278",
+      "SYN0212",
+      "SYN0229",
+      "SYN0152",
+      "SYN0163"
+    ],
+    "expected_names": [
+      "Nhà Hàng Hương Sen",
+      "Lẩu Nấm Rừng",
+      "Nhà Hàng Hương Sen Nguyễn Trãi",
+      "Nhà Hàng Ngon",
+      "Quán Chay Tịnh Tâm"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "wifi",
+      "bãi đỗ xe",
+      "phù hợp gia đình",
+      "mở khuya",
+      "chất lượng cao",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ106",
+    "input_query": "dia diem tham quan dep nhat o Quan 7",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0739",
+      "SYN0750",
+      "SYN0761"
+    ],
+    "expected_names": [
+      "Sun World - Hoàng Diệu",
+      "Vinpearl Land Trần Quốc Toản",
+      "Khu Sinh Thái Rừng Dừa Quận 7"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Điểm tham quan",
+      "chất lượng cao",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ107",
+    "input_query": "quán ăn cho gia đình ở Tây Hồ",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0179",
+      "SYN0193",
+      "SYN0208",
+      "SYN0180",
+      "SYN0232"
+    ],
+    "expected_names": [
+      "Nhà Hàng Phố Biển Lê Lợi",
+      "Nhà Hàng Đồng Quê",
+      "Hotpot Story Tây Hồ",
+      "Quán Chay Tịnh Tâm",
+      "Nhà Hàng Ngon Lý Thường Kiệt"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "phù hợp gia đình",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ108",
+    "input_query": "địa điểm tham quan đẹp nhất ở Hai Bà Trưng",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0747"
+    ],
+    "expected_names": [
+      "Sun World - Hoàng Diệu"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Điểm tham quan",
+      "chất lượng cao",
+      "Hai Bà Trưng"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ109",
+    "input_query": "nhà hàng ngon nhất ở Đống Đa",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0245",
+      "SYN0151",
+      "SYN0175",
+      "SYN0144",
+      "SYN0256"
+    ],
+    "expected_names": [
+      "Quán Ăn Ba Miền Đống Đa",
+      "Lẩu Dê Sáu Miền Nguyễn Du",
+      "Cơm Gà Xối Mỡ",
+      "Cơm Niêu Chợ Cũ",
+      "Pizza 4P's Điện Biên Phủ"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "chất lượng cao",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ110",
+    "input_query": "trung tâm mua sắm ở Phường 2",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0493",
+      "G070",
+      "SYN0523",
+      "G071"
+    ],
+    "expected_names": [
+      "Sense City Phường 2",
+      "GO! Phường 2",
+      "Trung Tâm Thương Mại Sài Gòn Lê Duẩn",
+      "GO! Phường 2"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ111",
+    "input_query": "tram sac xe dien 24/7 o Dong Da",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0884",
+      "SYN0881"
+    ],
+    "expected_names": [
+      "Trạm Sạc EV One Trần Hưng Đạo",
+      "Trạm Sạc Năng Lượng Mới"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm sạc điện",
+      "24/7",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ112",
+    "input_query": "nha hang cho gia dinh mo khuya o Phuong 3",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0200",
+      "SYN0286",
+      "SYN0219",
+      "G060",
+      "SYN0161"
+    ],
+    "expected_names": [
+      "Hải Sản Biển Đông Nguyễn Công Trứ",
+      "Bún Chả Hàng Mành",
+      "Nhà Hàng Đồng Quê",
+      "BBQ Garden Phường 3",
+      "Nhà Hàng Đồng Quê Phường 3"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "phù hợp gia đình",
+      "mở khuya",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ113",
+    "input_query": "cho rut tien mat gap o Quan 7",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0584",
+      "SYN0556",
+      "SYN0617",
+      "SYN0545",
+      "SYN0637"
+    ],
+    "expected_names": [
+      "ATM Đông Á Bank Võ Văn Tần",
+      "ATM Techcombank - Nguyễn Đình Chiểu",
+      "MB Bank Quận 7",
+      "ACB Quận 7",
+      "ATM ACB Quận 7"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "Quận 7"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ114",
+    "input_query": "chỗ ngồi học bài yên tĩnh cả ngày ở Bình Thạnh",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0018",
+      "SYN0016",
+      "SYN0040",
+      "SYN0060"
+    ],
+    "expected_names": [
+      "Cà Phê Cũ Trần Phú",
+      "Katinat Bình Thạnh",
+      "The Coffee House Nguyễn Thị Minh Khai",
+      "The Coffee House Nguyễn Thị Minh Khai"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "yên tĩnh",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ115",
+    "input_query": "VietinBank ở Hai Bà Trưng",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0638"
+    ],
+    "expected_names": [
+      "ATM VietinBank - Hoàng Diệu"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "VietinBank",
+      "Hai Bà Trưng"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ116",
+    "input_query": "tram xang o Phuong 1",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0716",
+      "SYN0691",
+      "G067"
+    ],
+    "expected_names": [
+      "Cây Xăng Saigon Petro Bạch Đằng",
+      "Trạm Xăng Mipec Phường 1",
+      "Trạm xăng Mipec Phường 1"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ117",
+    "input_query": "quán cà phê mở khuya ở q1",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0079",
+      "SYN0015",
+      "SYN0102"
+    ],
+    "expected_names": [
+      "Cà Phê Gió",
+      "Cà Phê Sách Nguyễn Đình Chiểu",
+      "Cộng Cà Phê Phan Chu Trinh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "mở khuya",
+      "Quận 1"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Abbreviation"
+    ]
+  },
+  {
+    "query_id": "SQ118",
+    "input_query": "Lau Pho o Hoan Kiem",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "G006"
+    ],
+    "expected_names": [
+      "Lẩu Phố Hoàn Kiếm"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Lẩu Phố",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ119",
+    "input_query": "ATM có chỗ đậu xe ở ốĐng Đa",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0575",
+      "SYN0570",
+      "SYN0535",
+      "SYN0600",
+      "SYN0579",
+      "SYN0541"
+    ],
+    "expected_names": [
+      "ATM BIDV Lý Thường Kiệt",
+      "ATM Techcombank - Nguyễn Đình Chiểu",
+      "ATM TPBank - Lê Duẩn",
+      "ATM BIDV Đống Đa",
+      "ATM VPBank Đống Đa",
+      "SHB Đống Đa"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "ATM",
+      "bãi đỗ xe",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ120",
+    "input_query": "quán ăn cho gia đình có bãi đỗ xe ở Phường 3",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "G058",
+      "SYN0200",
+      "SYN0204",
+      "SYN0286",
+      "SYN0219"
+    ],
+    "expected_names": [
+      "Nhà hàng Biển Xanh Phường 3",
+      "Hải Sản Biển Đông Nguyễn Công Trứ",
+      "Cơm Tấm Cô Ba",
+      "Bún Chả Hàng Mành",
+      "Nhà Hàng Đồng Quê"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "phù hợp gia đình",
+      "bãi đỗ xe",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ121",
+    "input_query": "attraction ở Thủ Đức",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0759",
+      "SYN0744",
+      "SYN0763"
+    ],
+    "expected_names": [
+      "Vườn Quốc Gia Xanh",
+      "Đền Ngọc Hoàng",
+      "Chùa Linh Ẩn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Điểm tham quan",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ122",
+    "input_query": "cong vien rong nhat o Binh Thanh",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0842",
+      "SYN0847",
+      "SYN0832"
+    ],
+    "expected_names": [
+      "Công Viên Yên Sở Bình Thạnh",
+      "Công Viên Gia Định Bình Thạnh",
+      "Vườn Hoa Lý Tự Trọng"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Công viên",
+      "chất lượng cao",
+      "Bình Thạnh"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ123",
+    "input_query": "TPBank ở Tây Hồ",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0587",
+      "SYN0624"
+    ],
+    "expected_names": [
+      "TPBank Phan Đình Phùng",
+      "TPBank Cách Mạng Tháng Tám"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "TPBank",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ124",
+    "input_query": "qáun ăn ở Phường 1",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0149",
+      "SYN0295",
+      "SYN0249",
+      "SYN0153",
+      "SYN0264",
+      "SYN0262"
+    ],
+    "expected_names": [
+      "Phở Gánh",
+      "Bếp Nhà Quê",
+      "Nhà Hàng Hương Sen Lê Thánh Tôn",
+      "King BBQ Phường 1",
+      "Nhà Hàng Hương Sen",
+      "Cơm Niêu Chợ Cũ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ125",
+    "input_query": "coffee shop ở Liên Chiểu",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0099",
+      "SYN0140",
+      "SYN0005",
+      "SYN0132",
+      "SYN0004",
+      "SYN0045"
+    ],
+    "expected_names": [
+      "Mộc Coffee Liên Chiểu",
+      "Highlands Coffee Trần Hưng Đạo",
+      "Cà Phê Yên Liên Chiểu",
+      "Cà Phê Sân Vườn",
+      "Thềm Xưa Cafe Liên Chiểu",
+      "The Coffee House Coffee Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ126",
+    "input_query": "cà phê lnãg mạn ở Đống Đa",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0023",
+      "SYN0104",
+      "SYN0112"
+    ],
+    "expected_names": [
+      "Bụi Coffee",
+      "Cà Phê Thơ",
+      "Cộng Cà Phê Coffee Nguyễn Văn Cừ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "lãng mạn",
+      "Đống Đa"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ127",
+    "input_query": "rap chieu phim mo cua khuya o Phuong 3",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0808",
+      "SYN0811",
+      "SYN0810"
+    ],
+    "expected_names": [
+      "Rạp Chiếu Bóng Hòa Bình Phường 3",
+      "BHD Star - Nguyễn Đình Chiểu",
+      "BHD Star Phan Chu Trinh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Rạp phim",
+      "mở khuya",
+      "Phường 3"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ128",
+    "input_query": "quná cafe mở cửa khuya ở Hoàn Kiếm",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "C003",
+      "SYN0110",
+      "SYN0014",
+      "SYN0038"
+    ],
+    "expected_names": [
+      "Cộng Cà Phê Hồ Gươm",
+      "Highlands Coffee Coffee Võ Văn Tần",
+      "Cà Phê Vườn Trần Phú",
+      "Cà Phê Yên Nguyễn Đình Chiểu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "mở khuya",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ129",
+    "input_query": "cà phê mở khuya ở Sơn Trà",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0012",
+      "SYN0095"
+    ],
+    "expected_names": [
+      "Cộng Cà Phê Nguyễn Công Trứ",
+      "Là Cafe"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "mở khuya",
+      "Sơn Trà"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ130",
+    "input_query": "Hương Biển Resort ở Ngũ Hành Sơn",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0387",
+      "SYN0343"
+    ],
+    "expected_names": [
+      "Hương Biển Resort Ngũ Hành Sơn",
+      "Hương Biển Resort"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Hương Biển Resort",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ131",
+    "input_query": "khách sạn giá bình dân ở Thanh Khê",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0417",
+      "SYN0315",
+      "SYN0333",
+      "SYN0368"
+    ],
+    "expected_names": [
+      "Á Đông Hotel",
+      "Á Đông Hotel Hai Bà Trưng",
+      "Khách Sạn Ban Mai",
+      "Khách Sạn Mường Thanh Trần Quốc Toản"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "giá rẻ",
+      "Thanh Khê"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ132",
+    "input_query": "khach san o Hoan Kiem",
+    "query_category": "Location-Aware Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0389",
+      "SYN0390",
+      "SYN0316",
+      "SYN0409",
+      "SYN0312"
+    ],
+    "expected_names": [
+      "Ngọc Lan Hotel Hoàn Kiếm",
+      "Khách Sạn Sao Mai",
+      "Nhà Nghỉ Cỏ May",
+      "Khách Sạn Long Biên",
+      "A25 Hotel Nguyễn Thị Minh Khai"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ133",
+    "input_query": "chỗ ngồi làm việc cả buổi ở Thủ Đức",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0068",
+      "SYN0109",
+      "SYN0010"
+    ],
+    "expected_names": [
+      "Nhà Của Mây Thủ Đức",
+      "An Nhiên Cafe",
+      "Cộng Cà Phê Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "phù hợp làm việc",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ134",
+    "input_query": "khách sạn wifi lãng mạn ở Thủ Đức",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0355",
+      "SYN0416",
+      "SYN0369",
+      "SYN0311",
+      "SYN0308",
+      "SYN0376",
+      "SYN0364"
+    ],
+    "expected_names": [
+      "Khách Sạn Phương Đông Thủ Đức",
+      "Ngọc Lan Hotel",
+      "Khách Sạn Phương Đông Trần Hưng Đạo",
+      "Grand Hotel Thủ Đức",
+      "Hoa Đăng Hotel Thủ Đức",
+      "Khách Sạn Hải Âu",
+      "Á Đông Hotel Thủ Đức"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "wifi",
+      "lãng mạn",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ135",
+    "input_query": "Mipec o Hoa Vang",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0689"
+    ],
+    "expected_names": [
+      "Trạm Xăng Mipec Hòa Vang"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Mipec",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ136",
+    "input_query": "Trung Tam Mua Sam Thu Do o Ngu Hanh Son",
+    "query_category": "POI Search",
+    "difficulty": "Easy",
+    "expected_ids": [
+      "SYN0474"
+    ],
+    "expected_names": [
+      "Trung Tâm Mua Sắm Thủ Đô"
+    ],
+    "expected_intent": "POI Search",
+    "semantic_requirements": [
+      "Trung Tâm Mua Sắm Thủ Đô",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "relevance",
+      "location"
+    ],
+    "skills_tested": [
+      "POI",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ137",
+    "input_query": "trung tâm mua sắm có chỗ đậu xe lớn nhất ở Hòa Vang",
+    "query_category": "Discovery Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0515",
+      "SYN0496",
+      "SYN0478",
+      "SYN0501",
+      "SYN0525",
+      "SYN0465"
+    ],
+    "expected_names": [
+      "Parkson Hòa Vang",
+      "Aeon Mall Plaza Lê Duẩn",
+      "Lotte Nguyễn Thị Minh Khai",
+      "Sense City Plaza Hoàng Diệu",
+      "Sense City Nguyễn Du",
+      "Aeon Mall Plaza Hòa Vang"
+    ],
+    "expected_intent": "Discovery Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "bãi đỗ xe",
+      "chất lượng cao",
+      "Hòa Vang"
+    ],
+    "ranking_signals": [
+      "rating",
+      "relevance",
+      "popularity"
+    ],
+    "skills_tested": [
+      "Ranking",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ138",
+    "input_query": "trạm sạc điện wifi ở Hoàn Kiếm",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0874",
+      "SYN0880"
+    ],
+    "expected_names": [
+      "EV One Phan Chu Trinh",
+      "Trạm Sạc Xe Điện Xanh"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm sạc điện",
+      "wifi",
+      "Hoàn Kiếm"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ139",
+    "input_query": "noi hen ho lang man buoi toi mo khuya phu hop gia dinh o Ba Dinh",
+    "query_category": "Intent-Based Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0266",
+      "SYN0278",
+      "SYN0212",
+      "SYN0229",
+      "SYN0152",
+      "SYN0163",
+      "SYN0196"
+    ],
+    "expected_names": [
+      "Quán Ăn Ba Miền Ba Đình",
+      "Nhà Hàng Hương Sen",
+      "Lẩu Nấm Rừng",
+      "Nhà Hàng Hương Sen Nguyễn Trãi",
+      "Nhà Hàng Ngon",
+      "Quán Chay Tịnh Tâm",
+      "Nhà Hàng Hotpot Story Ba Đình"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "lãng mạn",
+      "mở khuya",
+      "phù hợp gia đình",
+      "Ba Đình"
+    ],
+    "ranking_signals": [
+      "semantic",
+      "attributes",
+      "location"
+    ],
+    "skills_tested": [
+      "Intent",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ140",
+    "input_query": "romantic hotel with parking ở Thủ Đức",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0355",
+      "SYN0350",
+      "SYN0401",
+      "SYN0369",
+      "SYN0311",
+      "SYN0308"
+    ],
+    "expected_names": [
+      "Khách Sạn Phương Đông Thủ Đức",
+      "Grand Hotel Thủ Đức",
+      "Khách Sạn Đông Đô Hùng Vương",
+      "Khách Sạn Phương Đông Trần Hưng Đạo",
+      "Grand Hotel Thủ Đức",
+      "Hoa Đăng Hotel Thủ Đức"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "lãng mạn",
+      "bãi đỗ xe",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ141",
+    "input_query": "trung tâm mua sắm để check-in ở Tây Hồ",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0498",
+      "SYN0438"
+    ],
+    "expected_names": [
+      "Chợ Lớn Plaza Tây Hồ",
+      "Vincom Tây Hồ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trung tâm thương mại",
+      "check-in",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ142",
+    "input_query": "khách sạn giá bình dân ở Liên Chiểu",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0414",
+      "SYN0402",
+      "G045",
+      "SYN0340",
+      "SYN0423",
+      "G044"
+    ],
+    "expected_names": [
+      "Khách Sạn Grand Hotel Liên Chiểu",
+      "Khách Sạn Đông Đô Trần Phú",
+      "Fusion Liên Chiểu",
+      "Vinpearl Hoàng Diệu",
+      "Mường Thanh Liên Chiểu",
+      "Holiday Liên Chiểu"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "giá rẻ",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ143",
+    "input_query": "khach san sang trong o Phuong 1",
+    "query_category": "Semantic Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0421",
+      "G063",
+      "SYN0366",
+      "SYN0377"
+    ],
+    "expected_names": [
+      "Á Đông Hotel",
+      "Mường Thanh Phường 1",
+      "A25 Hotel Trương Định",
+      "Khách Sạn Ban Mai"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "cao cấp",
+      "Phường 1"
+    ],
+    "ranking_signals": [
+      "price",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Price",
+      "Semantic",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ144",
+    "input_query": "nhà hàng wifi có chỗ đậu xe lãng mạn ở Phường 4",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0261",
+      "SYN0190",
+      "SYN0195",
+      "SYN0228",
+      "SYN0292",
+      "SYN0148"
+    ],
+    "expected_names": [
+      "Quán Chay Tịnh Tâm Lê Thánh Tôn",
+      "Nhà Hàng Sen Vàng",
+      "King BBQ Phường 4",
+      "Nhà Hàng Hotpot Story Phường 4",
+      "Nhà Hàng Ngon",
+      "Nhà Hàng Đồng Quê"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "wifi",
+      "bãi đỗ xe",
+      "lãng mạn",
+      "Phường 4"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ145",
+    "input_query": "cafe for photos ở Thủ Đức",
+    "query_category": "Mixed Language Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0090",
+      "SYN0032",
+      "SYN0068",
+      "SYN0022",
+      "SYN0109",
+      "SYN0010"
+    ],
+    "expected_names": [
+      "Cà Phê Yên Thủ Đức",
+      "Sương Mai Coffee",
+      "Nhà Của Mây Thủ Đức",
+      "Mộc Coffee",
+      "An Nhiên Cafe",
+      "Cộng Cà Phê Nguyễn Trãi"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "check-in",
+      "Thủ Đức"
+    ],
+    "ranking_signals": [
+      "location",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Category",
+      "Location",
+      "MixedLanguage"
+    ]
+  },
+  {
+    "query_id": "SQ146",
+    "input_query": "cay xang mo cua 24/24 o Lien Chieu",
+    "query_category": "Attribute Search",
+    "difficulty": "Hard",
+    "expected_ids": [
+      "SYN0718",
+      "SYN0690",
+      "SYN0646",
+      "SYN0721"
+    ],
+    "expected_names": [
+      "Cây Xăng Mipec Liên Chiểu",
+      "Cây Xăng Petrolimex Liên Chiểu",
+      "Trạm Xăng Saigon Petro Lý Thường Kiệt",
+      "Trạm Xăng Nam Sông Hậu Hai Bà Trưng"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "24/7",
+      "Liên Chiểu"
+    ],
+    "ranking_signals": [
+      "opening_hours",
+      "relevance"
+    ],
+    "skills_tested": [
+      "Time",
+      "Attribute",
+      "Location",
+      "Diacritics"
+    ]
+  },
+  {
+    "query_id": "SQ147",
+    "input_query": "khách sạn gần biển ở Tây Hồ",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "G008"
+    ],
+    "expected_names": [
+      "Lotus Hotel Tây Hồ"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Khách sạn",
+      "gần biển",
+      "Tây Hồ"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ148",
+    "input_query": "cây xăng 24/7 có bãi đỗ xe ở Ngũ àHnh Sơn",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0672",
+      "SYN0734",
+      "SYN0654",
+      "SYN0706",
+      "SYN0663",
+      "SYN0644"
+    ],
+    "expected_names": [
+      "Cây Xăng PV Oil Ngũ Hành Sơn",
+      "Trạm Xăng Nam Sông Hậu Trần Hưng Đạo",
+      "Cây Xăng PV Oil Phan Chu Trinh",
+      "Trạm Xăng PV Oil Nguyễn Thị Minh Khai",
+      "Cây Xăng Petrolimex Ngũ Hành Sơn",
+      "Trạm Xăng Shell Việt Ngũ Hành Sơn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Trạm xăng",
+      "24/7",
+      "bãi đỗ xe",
+      "Ngũ Hành Sơn"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location",
+      "Typo"
+    ]
+  },
+  {
+    "query_id": "SQ149",
+    "input_query": "quán cà phê sống ảo đẹp ở Phường 2",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0080",
+      "SYN0035"
+    ],
+    "expected_names": [
+      "Mộc Coffee",
+      "Highlands Coffee Coffee Lê Thánh Tôn"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Quán cà phê",
+      "check-in",
+      "Phường 2"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  },
+  {
+    "query_id": "SQ150",
+    "input_query": "nhà hàng để hẹn hò mở khuya ở Phường 8",
+    "query_category": "Attribute Search",
+    "difficulty": "Medium",
+    "expected_ids": [
+      "SYN0160",
+      "SYN0293",
+      "SYN0288",
+      "SYN0257",
+      "SYN0171",
+      "SYN0275"
+    ],
+    "expected_names": [
+      "Nhà Hàng Ngon",
+      "Pizza 4P's Võ Văn Tần",
+      "Món Huế Phường 8",
+      "Quán Nướng Lá Chuối",
+      "Cơm Tấm Cô Ba",
+      "Wrap & Roll Phường 8"
+    ],
+    "expected_intent": "Category Search",
+    "semantic_requirements": [
+      "Nhà hàng",
+      "lãng mạn",
+      "mở khuya",
+      "Phường 8"
+    ],
+    "ranking_signals": [
+      "attributes",
+      "relevance",
+      "rating"
+    ],
+    "skills_tested": [
+      "Attribute",
+      "Semantic",
+      "Location"
+    ]
+  }
+]

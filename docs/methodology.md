@@ -110,14 +110,26 @@ Local **`BAAI/bge-m3`** (multilingual embeddings) is the primary provider: the b
 tuning, and gates all run against it, so the demo has no hard network dependency (NFR-3).
 
 **Deployment modes** (`src/semsearch/config.py`, env `SEMSEARCH_MODE`) make this posture
-switchable per host: `local` (the default above — what every reported metric runs on),
-`local-first` (local, degrading to the Bedrock chain if bge-m3 is broken on the host), and
-`cloud` (Bedrock-only for remote hosting without the 2.3 GB model; all providers failing
-degrades to a BM25-only floor, and the LLM parse turns on by default). Every measurement
-entry point (`engines.py` factories, `tune.py`, `bench_latency.py`, `sample_queries.py`,
-`robustness.py`) pins BOTH `provider='local'` and `mode='local'`, so neither the embedding
-space nor the LLM-parse default can drift with the deployment mode — a regression test
-(`tests/test_integrity.py::test_eval_engines_immune_to_deployment_mode`) enforces this.
+switchable per host: `local` (bge-m3 only), `local-first` (local, degrading to the Bedrock
+chain if bge-m3 is broken on the host), and `cloud` (Bedrock-only for remote hosting without
+the 2.3 GB model; all providers failing degrades to a BM25-only floor, and the LLM parse turns
+on by default). `DEFAULT_MODE` is now `cloud` for deployment, but every reported metric still
+runs pinned to `mode='local'` + the local provider: every measurement entry point
+(`engines.py` factories, `tune.py`, `bench_latency.py`, `sample_queries.py`, `robustness.py`)
+pins BOTH `provider='local'` and `mode='local'` explicitly, so neither the embedding space nor
+the LLM-parse default can drift with the deployment mode — the integrity guarantee is
+unchanged, and a regression test
+(`tests/test_integrity.py::test_eval_engines_immune_to_deployment_mode`) enforces it.
+
+**LLM query improvement (FR-4).** Riding the SAME intent-parse call (no extra request), the
+LLM also returns a `corrected_query` — the user's text with typos fixed and Vietnamese
+diacritics/tone marks restored. It passes a no-op / length / token-overlap guard (a correction
+equal to the original, or one sharing no folded token with it, is dropped as a
+refusal/hallucination), then REPLACES the raw query for the rule parse, BM25, dense retrieval,
+and subject corroboration; the API `query` echo stays the original text and the correction is
+surfaced additively as `meta.correctedQuery`. Because it rides the LLM parse, it is off in
+every measured path (all of which pin `mode='local'`, LLM parse off), so it too cannot reach a
+reported metric. Switch: `SEMSEARCH_QUERY_REWRITE` / `DEFAULT_QUERY_REWRITE` (on by default).
 
 **Amazon Bedrock is implemented as a selectable provider** — never the default, never
 required to run:

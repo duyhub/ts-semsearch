@@ -76,6 +76,10 @@
   .rhead{flex:none; display:flex; align-items:center; gap:14px; padding:11px 22px; background:var(--canvas); border-bottom:1px solid var(--line)}
   .rhead .q{font-size:14px; color:var(--ink-dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .rhead .q b{color:var(--ink); font-weight:600}
+  /* "Đã hiểu: «…»" — the LLM-corrected query (typos fixed, diacritics restored), shown only
+     when the API surfaced meta.correctedQuery; muted accent, single-line ellipsis */
+  .qhint{flex:0 1 auto; min-width:0; font-size:13px; font-weight:600; color:var(--accent-ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .intentpills{display:flex; gap:6px; flex-wrap:wrap; min-width:0}
   .ipill{font-size:12px; font-weight:600; padding:3px 9px; border-radius:var(--radius-pill); background:var(--primary-tint); color:var(--primary-deep); white-space:nowrap}
   .ipill.loc{background:var(--accent-tint); color:var(--accent-ink)}
@@ -265,6 +269,7 @@
 
 <div class="rhead">
   <div class="q">Kết quả cho <b id="qecho">…</b></div>
+  <div class="qhint" id="qhint"></div>
   <div class="intentpills" id="intentPills"></div>
   <div class="latency" id="latency"><span class="bolt"></span><span id="latVal">— ms</span></div>
   <div class="viewseg" role="group" aria-label="Danh sách hoặc bản đồ">
@@ -311,7 +316,7 @@ const SIG_GLOSS = {semantic:"khớp ngữ nghĩa (BM25 + vector, RRF)", attribut
   price:"phù hợp mức giá (rẻ / cao cấp)"};
 const fmtInt = n => String(n ?? 0).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, took:0, selected:null, weights:{}, loading:false};
+let state = {q:'', mode:'product', view:'list', sem:[], kw:[], intent:null, corrected:'', took:0, selected:null, weights:{}, loading:false};
 
 /* ---------- parse the fact-based reasons into card elements ---------- */
 function parseReasons(reasons){
@@ -485,6 +490,8 @@ function renderResults(){
   // header labels by mode
   if(state.mode==='compare'){ $('#listTag').textContent='Ngữ nghĩa · AI'; $('#listTag').className='tag ai'; $('#listCap').textContent='hiểu ý định'; }
   else { $('#listTag').textContent=`${state.sem.length} địa điểm`; $('#listTag').className='tag ai'; $('#listCap').textContent='xếp theo mức phù hợp'; }
+  // "Đã hiểu: «…»" hint — the LLM-corrected query, only when the API surfaced one (textContent: diacritics-safe)
+  $('#qhint').textContent = state.corrected ? 'Đã hiểu: «' + state.corrected + '»' : '';
   // intent pills
   const it=state.intent||{}; const pills=[];
   (it.requiredAttrs||[]).forEach(a=>pills.push(`<span class="ipill">${esc(a)}</span>`));
@@ -527,6 +534,7 @@ async function run(query){
       fetch(`/v1/search?q=${encodeURIComponent(q)}&engine=keyword&limit=8`).then(r=>r.ok?r.json():{results:[]}),
     ]);
     state.sem=sem.results||[]; state.intent=sem.intent||{}; state.took=sem.meta?.tookMs ?? 0;
+    state.corrected = (sem && sem.meta && sem.meta.correctedQuery) || '';  // LLM-corrected query
     state.weights=sem.weights||{}; state.semSource = state.sem[0]?.source; state.kw=kw.results||[];
     $('#latVal').textContent=`${Math.round(state.took)} ms`;
     renderResults();

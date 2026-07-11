@@ -61,11 +61,12 @@ def _isolated(monkeypatch, tmp_path):
     """Every test: tmp caches, clean env, offline bedrock, no OpenAI key discoverable."""
     monkeypatch.setattr(E, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(E, "QCACHE_DIR", tmp_path / "qcache")
-    for var in ("SEMSEARCH_MODE", "SEMSEARCH_LLM_PARSE", "SEMSEARCH_BEDROCK_REGION",
-                "SEMSEARCH_BEDROCK_REGIONS", "AWS_REGION", "AWS_DEFAULT_REGION",
-                "OPENAI_API_KEY", L.OPENAI_MODEL_ENV, L.CLAUDE_MODEL_ENV):
+    for var in ("SEMSEARCH_MODE", "SEMSEARCH_QUERY_REWRITE", "SEMSEARCH_LLM_PARSE",
+                "SEMSEARCH_BEDROCK_REGION", "SEMSEARCH_BEDROCK_REGIONS", "AWS_REGION",
+                "AWS_DEFAULT_REGION", "OPENAI_API_KEY", L.OPENAI_MODEL_ENV, L.CLAUDE_MODEL_ENV):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(L, "_REPO_ROOT", tmp_path / "no-repo")  # hide the real .env/ key
+    monkeypatch.setattr(L, "LLMCACHE_DIR", tmp_path / "llmcache")  # isolate the LLM disk cache
     monkeypatch.setattr("boto3.client", lambda *a, **k: _AlwaysFailBoto())
 
 
@@ -122,7 +123,12 @@ def _broken_sentence_transformers(monkeypatch, message: str):
 # resolve_mode precedence: env > constant; invalid -> local + warning         #
 # --------------------------------------------------------------------------- #
 def test_resolve_mode_default_and_env(monkeypatch, caplog):
-    assert C.resolve_mode() == "local"  # constant default, no env
+    # No env: resolve_mode returns the CONSTANT, whatever it is (proven both ways) — the
+    # mechanic, not a hardcoded value that would break when DEFAULT_MODE is flipped.
+    monkeypatch.setattr(C, "DEFAULT_MODE", "local")
+    assert C.resolve_mode() == "local"
+    monkeypatch.setattr(C, "DEFAULT_MODE", "cloud")  # flipped constant honored too
+    assert C.resolve_mode() == "cloud"
 
     monkeypatch.setenv("SEMSEARCH_MODE", "cloud")
     assert C.resolve_mode() == "cloud"
@@ -133,6 +139,31 @@ def test_resolve_mode_default_and_env(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         assert C.resolve_mode() == "local"
     assert any("hybrid-banana" in r.getMessage() for r in caplog.records)
+
+
+def test_resolve_query_rewrite_precedence(monkeypatch, caplog):
+    monkeypatch.delenv("SEMSEARCH_QUERY_REWRITE", raising=False)
+    # No env: resolve_query_rewrite returns the CONSTANT, whatever it is (proven both ways).
+    monkeypatch.setattr(C, "DEFAULT_QUERY_REWRITE", True)
+    assert C.resolve_query_rewrite() is True
+    monkeypatch.setattr(C, "DEFAULT_QUERY_REWRITE", False)
+    assert C.resolve_query_rewrite() is False
+    monkeypatch.setattr(C, "DEFAULT_QUERY_REWRITE", True)  # restore for env-override checks
+
+    for off in ("off", "0", "false", "no"):
+        monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", off)
+        assert C.resolve_query_rewrite() is False
+    for on in ("on", "1", "true", "yes"):
+        monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", on)
+        assert C.resolve_query_rewrite() is True
+
+    monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", "OFF")  # case-insensitive
+    assert C.resolve_query_rewrite() is False
+
+    monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", "maybe")  # unknown -> warn + constant default
+    with caplog.at_level("WARNING"):
+        assert C.resolve_query_rewrite() is True
+    assert any("maybe" in r.getMessage() for r in caplog.records)
 
 
 def test_resolve_mode_constant_switch_env_still_wins(monkeypatch):
@@ -287,7 +318,22 @@ def test_health_reports_local_mode(pois, monkeypatch):
     app = create_app(pois, prewarm=False, mode="local")
     body = TestClient(app).get("/health").json()
     assert body == {"status": "ok", "pois": len(pois), "mode": "local",
-                    "embeddings": "local", "llm_parse": "rules-only"}
+                    "embeddings": "local", "llm_parse": "rules-only",
+                    "query_rewrite": "off"}  # LLM off in local mode -> rewrite can't fire
+
+
+def test_health_reports_query_rewrite_on_and_off(pois, monkeypatch):
+    """query_rewrite is 'on' when the switch is on AND the LLM parse gate is on (the correction
+    rides that parse), even if the parser resolved nothing offline; env off forces it off."""
+    monkeypatch.setattr(P, "get_embedder", lambda provider="local": UnitLocal())
+    monkeypatch.setenv("SEMSEARCH_LLM_PARSE", "bedrock")  # gate on -> _llm_parser is not None
+    monkeypatch.delenv("SEMSEARCH_QUERY_REWRITE", raising=False)  # default True
+    app_on = create_app(pois, prewarm=False, mode="local")
+    assert TestClient(app_on).get("/health").json()["query_rewrite"] == "on"
+
+    monkeypatch.setenv("SEMSEARCH_QUERY_REWRITE", "off")  # switch off wins even with the gate on
+    app_off = create_app(pois, prewarm=False, mode="local")
+    assert TestClient(app_off).get("/health").json()["query_rewrite"] == "off"
 
 
 def test_health_reports_bm25_floor_in_cloud_mode(pois, monkeypatch):

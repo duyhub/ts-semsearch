@@ -16,10 +16,11 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from dataclasses import replace
 from datetime import datetime
 from typing import Sequence
 
-from .config import VALID_MODES, resolve_mode
+from .config import VALID_MODES, resolve_mode, resolve_query_rewrite
 from .data import POI, QueryIntent, RankedResult, content_tokens
 from .embeddings import (
     BEDROCK_PROVIDERS,
@@ -146,6 +147,9 @@ class FullPipeline:
         self._llm_parser = LLMParser(prefer=prefer) if llm_on else None
         self._llm_warned = False  # log the "LLM unavailable" warning at most once
         self._llm_warn_lock = threading.Lock()  # latch is check-then-set; API serves threaded
+        # FR-4: when on, the LLM's corrected_query REPLACES the raw text for retrieval. It rides
+        # the LLM parse (no extra call), so it is inert whenever the parse is off/unavailable.
+        self._query_rewrite = resolve_query_rewrite()
 
     def _dense_for_mode(self, mode: str) -> DenseIndex | None:
         """Construction-time embeddings resolution per deployment mode — chosen ONCE,
@@ -223,18 +227,22 @@ class FullPipeline:
     def resolve_intent(self, query_text: str) -> QueryIntent:
         """The ONE intent resolution for a query — public because the API layer must use
         the SAME intent object for ranking, the intent echo, and reasons[] (a rule-only
-        re-parse there would contradict LLM-merged results). The rule parser always runs
-        (FR-2). When the LLM gate is off (default) this is byte-identical to
-        `self.parser.parse` — the gate short-circuits before any new code runs. When
-        SEMSEARCH_LLM_PARSE=bedrock, a Claude parse enriches the rule intent via
-        `merge_intent`; on ANY failure (network, creds, bad JSON) the rule intent is used
-        alone, with a single warning logged once (lock: uvicorn serves on a threadpool)."""
-        rule_intent = self.parser.parse(query_text)
+        re-parse there would contradict LLM-merged results). When the LLM gate is off
+        (default) this is byte-identical to `self.parser.parse` — the gate short-circuits
+        before any new code runs. When SEMSEARCH_LLM_PARSE=bedrock, ONE Claude parse runs on
+        the RAW text; on ANY failure (network, creds, bad JSON) the rule intent is used alone,
+        with a single warning logged once (lock: uvicorn serves on a threadpool).
+
+        Query rewrite (FR-4): with the parse on AND `resolve_query_rewrite()` True, the parse's
+        `corrected_query` (typos fixed, diacritics restored) REPLACES the raw text for the rule
+        parse (and, downstream, BM25/dense/subject). `raw` on the returned intent always holds
+        the ORIGINAL text — the API echo must never show the rewrite. The LLM fires at most
+        once per query regardless."""
         if self._llm_parser is None:
-            return rule_intent
+            return self.parser.parse(query_text)
         llm_out = None
         try:
-            llm_out = self._llm_parser.parse(query_text)  # never raises; None on failure
+            llm_out = self._llm_parser.parse(query_text)  # RAW text; never raises; None on failure
         except Exception:  # noqa: BLE001 - defensive; the LLM parse must never break a query
             llm_out = None
         if llm_out is None:
@@ -246,8 +254,13 @@ class FullPipeline:
                         self._llm_enabled_via,
                     )
                     self._llm_warned = True
-            return rule_intent
-        return merge_intent(rule_intent, llm_out)
+            return self.parser.parse(query_text)
+        corrected = (llm_out.get("corrected_query") or None) if self._query_rewrite else None
+        if corrected == query_text:  # extra safety; _validate already no-ops exact matches
+            corrected = None
+        rule_intent = self.parser.parse(corrected or query_text)  # parse the text we retrieve on
+        merged = merge_intent(rule_intent, llm_out)
+        return replace(merged, raw=query_text, corrected_query=corrected)  # raw = ORIGINAL
 
     def rank_scored(self, query_text: str, *, intent: QueryIntent | None = None,
                     ) -> list[tuple[str, float, dict[str, float]]]:
@@ -256,9 +269,13 @@ class FullPipeline:
         fires at most once per query — see `search`); when omitted it is resolved here."""
         if intent is None:
             intent = self.resolve_intent(query_text)
+        # FR-4 query rewrite: retrieval runs on the LLM-corrected text when present (the rule
+        # parse already did in resolve_intent); the raw text is display-only. dense + BM25 +
+        # subject corroboration (fed by this single dense_ids pass) all see the corrected text.
+        retrieval_text = intent.corrected_query or query_text
         # one dense pass, reused below; the BM25-only floor (dense=None) has no dense opinion
-        dense_ids = [pid for pid, _ in self.dense.search(query_text)] if self.dense else []
-        rel = self._relevance(query_text, intent, dense_ids)
+        dense_ids = [pid for pid, _ in self.dense.search(retrieval_text)] if self.dense else []
+        rel = self._relevance(retrieval_text, intent, dense_ids)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
             s, b = self.ranker.score(

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from semsearch.api import create_app
 from semsearch.rank import SIGNALS, load_weights
 
-app = create_app(prewarm=False)
+app = create_app(prewarm=False, mode="local")
 
 
 def test_api_serves_tuned_weights():
