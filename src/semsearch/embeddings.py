@@ -8,7 +8,10 @@ A2 (the silent-garbage guard): every cached vector is keyed by
 `provider:model_id:text`, and the doc matrix is stamped with its
 provider/model/dim in a manifest the loader asserts against. bge-m3, cohere-v3
 and titan-v2 are all 1024-d, so a provider mismatch would otherwise return
-noise, not an error.
+noise, not an error. The doc-matrix cache path is ALSO namespaced by a corpus
+fingerprint (a hash of the POI id sequence) — multiple corpora sharing one
+provider/model (e.g. the official 111-POI set and a synthetic superset) never
+collide at the same path, so indexing one can never overwrite another's cache.
 """
 from __future__ import annotations
 
@@ -347,37 +350,65 @@ def _safe(name: str) -> str:
     return name.replace("/", "_").replace(":", "_")
 
 
-def _matrix_path(emb: Embedder) -> Path:
-    return CACHE_DIR / f"embeddings.{emb.provider}.{_safe(emb.model_id)}.npy"
+def _corpus_hash(poi_ids: Sequence[str]) -> str:
+    """Short fingerprint of a POI id sequence, order-sensitive by design (row order is
+    baked into the matrix, so a reordered corpus must not resolve to the same path as
+    the original order). Used to namespace doc-matrix cache paths across corpora (see
+    module docstring, A2) — NOT a substitute for the manifest's poi_ids equality check,
+    which stays the authoritative guard; this is purely path namespacing."""
+    return hashlib.sha1(",".join(poi_ids).encode("utf-8")).hexdigest()[:8]
 
 
-def _manifest_path(emb: Embedder) -> Path:
-    return CACHE_DIR / f"embeddings.{emb.provider}.{_safe(emb.model_id)}.manifest.json"
+def _matrix_path(emb: Embedder, poi_ids: Sequence[str]) -> Path:
+    return CACHE_DIR / f"embeddings.{emb.provider}.{_safe(emb.model_id)}.c{_corpus_hash(poi_ids)}.npy"
+
+
+def _manifest_path(emb: Embedder, poi_ids: Sequence[str]) -> Path:
+    return (
+        CACHE_DIR
+        / f"embeddings.{emb.provider}.{_safe(emb.model_id)}.c{_corpus_hash(poi_ids)}.manifest.json"
+    )
 
 
 def build_doc_matrix(pois: Sequence[POI], emb: Embedder) -> np.ndarray:
-    """Embed composed POI docs, write a provider-stamped matrix + manifest, return it."""
+    """Embed composed POI docs, write a provider+corpus-stamped matrix + manifest, return it.
+
+    The cache path is namespaced by both provider/model AND a corpus fingerprint (a hash
+    of the POI id sequence, see `_corpus_hash`) — two different corpora (e.g. the official
+    111-POI set and a synthetic superset) resolve to different files, so building one can
+    never overwrite another's cache. The manifest itself (written alongside) remains the
+    authoritative A2 check; the path hash just keeps corpora from ever contending for it.
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    poi_ids = [p.poi_id for p in pois]
     matrix = emb.embed([compose_doc_text(p) for p in pois])
-    np.save(_matrix_path(emb), matrix)
+    np.save(_matrix_path(emb, poi_ids), matrix)
     manifest = {
         "provider": emb.provider,
         "model_id": emb.model_id,
         "dim": int(matrix.shape[1]),
         "n_docs": int(matrix.shape[0]),
-        "poi_ids": [p.poi_id for p in pois],
+        "poi_ids": poi_ids,
     }
-    with open(_manifest_path(emb), "w", encoding="utf-8") as fh:
+    with open(_manifest_path(emb, poi_ids), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False, indent=2)
     return matrix
 
 
 def load_doc_matrix(emb: Embedder, expected_poi_ids: Sequence[str]) -> np.ndarray:
-    """Load the cached matrix, asserting the manifest matches the active provider/model
-    and POI order. Refuses a mismatch rather than returning garbage (A2)."""
-    mpath, jpath = _matrix_path(emb), _manifest_path(emb)
+    """Load the cached matrix for THIS provider/model and THIS corpus (the path is
+    resolved from a hash of expected_poi_ids, see `_matrix_path`), then assert the
+    manifest matches the active provider/model and POI order exactly. Refuses a mismatch
+    rather than returning garbage (A2). The corpus-hashed path makes a genuine cross-corpus
+    collision structurally near-impossible, but the manifest check stays the authoritative
+    guard — a corrupted/stale manifest landing at the right path must still be caught."""
+    poi_ids = list(expected_poi_ids)
+    mpath, jpath = _matrix_path(emb, poi_ids), _manifest_path(emb, poi_ids)
     if not mpath.exists() or not jpath.exists():
-        raise FileNotFoundError(f"no cached matrix for provider={emb.provider} model={emb.model_id}; run ingest")
+        raise FileNotFoundError(
+            f"no cached matrix for provider={emb.provider} model={emb.model_id} "
+            f"corpus={_corpus_hash(poi_ids)} ({len(poi_ids)} POIs); run ingest"
+        )
     with open(jpath, encoding="utf-8") as fh:
         manifest = json.load(fh)
     if manifest["provider"] != emb.provider or manifest["model_id"] != emb.model_id:
@@ -385,7 +416,7 @@ def load_doc_matrix(emb: Embedder, expected_poi_ids: Sequence[str]) -> np.ndarra
             f"doc-matrix provider/model mismatch: manifest={manifest['provider']}/{manifest['model_id']} "
             f"active={emb.provider}/{emb.model_id} (A2 guard)"
         )
-    if manifest["poi_ids"] != list(expected_poi_ids):
+    if manifest["poi_ids"] != poi_ids:
         raise ValueError("doc-matrix POI order does not match current dataset; rebuild (A2 guard)")
     return np.load(mpath)
 
