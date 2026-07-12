@@ -57,7 +57,27 @@
                   "type": "null"
                 }
               ],
+              "description": "Vietnamese need-based query; diacritics preserved.",
               "title": "Q"
+            },
+            "description": "Vietnamese need-based query; diacritics preserved.",
+            "examples": {
+              "quiet_cafe": {
+                "summary": "Quiet café to sit and work",
+                "value": "quán cà phê yên tĩnh để ngồi làm việc"
+              },
+              "date_spot_d1": {
+                "summary": "Romantic date spot in District 1",
+                "value": "nơi hẹn hò lãng mạn ở quận 1"
+              },
+              "pho_late_nearby": {
+                "summary": "Phở open late, near me (use with lat/lon)",
+                "value": "phở mở khuya gần đây"
+              },
+              "rooftop_view": {
+                "summary": "Rooftop bar with a view",
+                "value": "quán bar sân thượng ngắm cảnh đẹp"
+              }
             }
           },
           {
@@ -78,7 +98,13 @@
               "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
             },
-            "description": "WGS84 latitude; supply together with lon"
+            "description": "WGS84 latitude; supply together with lon",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 10.7738
+              }
+            }
           },
           {
             "name": "lon",
@@ -98,7 +124,13 @@
               "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
             },
-            "description": "WGS84 longitude; supply together with lat"
+            "description": "WGS84 longitude; supply together with lat",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 106.704
+              }
+            }
           },
           {
             "name": "radiusMeters",
@@ -157,9 +189,11 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "description": "Max results; clamped to 1–20 (default 10)",
               "default": 10,
               "title": "Limit"
-            }
+            },
+            "description": "Max results; clamped to 1–20 (default 10)"
           },
           {
             "name": "lang",
@@ -167,9 +201,11 @@
             "required": false,
             "schema": {
               "type": "string",
+              "description": "Response language hint",
               "default": "vi",
               "title": "Lang"
-            }
+            },
+            "description": "Response language hint"
           },
           {
             "name": "engine",
@@ -240,7 +276,27 @@
                   "type": "null"
                 }
               ],
+              "description": "Vietnamese need-based query; diacritics preserved.",
               "title": "Q"
+            },
+            "description": "Vietnamese need-based query; diacritics preserved.",
+            "examples": {
+              "quiet_cafe": {
+                "summary": "Quiet café to sit and work",
+                "value": "quán cà phê yên tĩnh để ngồi làm việc"
+              },
+              "date_spot_d1": {
+                "summary": "Romantic date spot in District 1",
+                "value": "nơi hẹn hò lãng mạn ở quận 1"
+              },
+              "pho_late_nearby": {
+                "summary": "Phở open late, near me (use with lat/lon)",
+                "value": "phở mở khuya gần đây"
+              },
+              "rooftop_view": {
+                "summary": "Rooftop bar with a view",
+                "value": "quán bar sân thượng ngắm cảnh đẹp"
+              }
             }
           },
           {
@@ -261,7 +317,13 @@
               "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
             },
-            "description": "WGS84 latitude; supply together with lon"
+            "description": "WGS84 latitude; supply together with lon",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 10.7738
+              }
+            }
           },
           {
             "name": "lon",
@@ -281,7 +343,13 @@
               "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
             },
-            "description": "WGS84 longitude; supply together with lat"
+            "description": "WGS84 longitude; supply together with lat",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 106.704
+              }
+            }
           },
           {
             "name": "radiusMeters",
@@ -340,9 +408,11 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "description": "Max results; clamped to 1–20 (default 10)",
               "default": 10,
               "title": "Limit"
-            }
+            },
+            "description": "Max results; clamped to 1–20 (default 10)"
           },
           {
             "name": "lang",
@@ -350,9 +420,11 @@
             "required": false,
             "schema": {
               "type": "string",
+              "description": "Response language hint",
               "default": "vi",
               "title": "Lang"
-            }
+            },
+            "description": "Response language hint"
           },
           {
             "name": "engine",
@@ -423,7 +495,27 @@
                   "type": "null"
                 }
               ],
+              "description": "Vietnamese need-based query; diacritics preserved.",
               "title": "Q"
+            },
+            "description": "Vietnamese need-based query; diacritics preserved.",
+            "examples": {
+              "quiet_cafe": {
+                "summary": "Quiet café to sit and work",
+                "value": "quán cà phê yên tĩnh để ngồi làm việc"
+              },
+              "date_spot_d1": {
+                "summary": "Romantic date spot in District 1",
+                "value": "nơi hẹn hò lãng mạn ở quận 1"
+              },
+              "pho_late_nearby": {
+                "summary": "Phở open late, near me (use with lat/lon)",
+                "value": "phở mở khuya gần đây"
+              },
+              "rooftop_view": {
+                "summary": "Rooftop bar with a view",
+                "value": "quán bar sân thượng ngắm cảnh đẹp"
+              }
             }
           },
           {
@@ -444,7 +536,13 @@
               "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
             },
-            "description": "WGS84 latitude; supply together with lon"
+            "description": "WGS84 latitude; supply together with lon",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 10.7738
+              }
+            }
           },
           {
             "name": "lon",
@@ -464,7 +562,13 @@
               "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
             },
-            "description": "WGS84 longitude; supply together with lat"
+            "description": "WGS84 longitude; supply together with lat",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 106.704
+              }
+            }
           },
           {
             "name": "radiusMeters",
@@ -523,9 +627,11 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "description": "Max results; clamped to 1–20 (default 10)",
               "default": 10,
               "title": "Limit"
-            }
+            },
+            "description": "Max results; clamped to 1–20 (default 10)"
           },
           {
             "name": "lang",
@@ -533,9 +639,11 @@
             "required": false,
             "schema": {
               "type": "string",
+              "description": "Response language hint",
               "default": "vi",
               "title": "Lang"
-            }
+            },
+            "description": "Response language hint"
           },
           {
             "name": "engine",
@@ -606,7 +714,27 @@
                   "type": "null"
                 }
               ],
+              "description": "Vietnamese need-based query; diacritics preserved.",
               "title": "Q"
+            },
+            "description": "Vietnamese need-based query; diacritics preserved.",
+            "examples": {
+              "quiet_cafe": {
+                "summary": "Quiet café to sit and work",
+                "value": "quán cà phê yên tĩnh để ngồi làm việc"
+              },
+              "date_spot_d1": {
+                "summary": "Romantic date spot in District 1",
+                "value": "nơi hẹn hò lãng mạn ở quận 1"
+              },
+              "pho_late_nearby": {
+                "summary": "Phở open late, near me (use with lat/lon)",
+                "value": "phở mở khuya gần đây"
+              },
+              "rooftop_view": {
+                "summary": "Rooftop bar with a view",
+                "value": "quán bar sân thượng ngắm cảnh đẹp"
+              }
             }
           },
           {
@@ -627,7 +755,13 @@
               "description": "WGS84 latitude; supply together with lon",
               "title": "Lat"
             },
-            "description": "WGS84 latitude; supply together with lon"
+            "description": "WGS84 latitude; supply together with lon",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 10.7738
+              }
+            }
           },
           {
             "name": "lon",
@@ -647,7 +781,13 @@
               "description": "WGS84 longitude; supply together with lat",
               "title": "Lon"
             },
-            "description": "WGS84 longitude; supply together with lat"
+            "description": "WGS84 longitude; supply together with lat",
+            "examples": {
+              "hcmc_d1": {
+                "summary": "Bến Thành, District 1",
+                "value": 106.704
+              }
+            }
           },
           {
             "name": "radiusMeters",
@@ -706,9 +846,11 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "description": "Max results; clamped to 1–20 (default 10)",
               "default": 10,
               "title": "Limit"
-            }
+            },
+            "description": "Max results; clamped to 1–20 (default 10)"
           },
           {
             "name": "lang",
@@ -716,9 +858,11 @@
             "required": false,
             "schema": {
               "type": "string",
+              "description": "Response language hint",
               "default": "vi",
               "title": "Lang"
-            }
+            },
+            "description": "Response language hint"
           },
           {
             "name": "x-request-id",
