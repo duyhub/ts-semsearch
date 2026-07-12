@@ -76,7 +76,9 @@ FALLBACK_CLAUDE_MODELS = (
 # HARD RULE (CLAUDE.md): Bedrock calls carry a timeout so a dead network fails fast, never
 # hangs the demo. Parse sits in the request path, so the read timeout is short (~3s) and
 # there are NO retries — on failure we degrade to the rule intent, we do not stall.
-_CLAUDE_TIMEOUT = {"connect_timeout": 2, "read_timeout": 3, "retries": {"max_attempts": 1}}
+# botocore legacy-mode `max_attempts` counts RETRIES on top of the initial call (verified
+# 2026-07-12: 1 -> two attempts, 6.2s stall vs the intended 3s); 0 = single attempt.
+_CLAUDE_TIMEOUT = {"connect_timeout": 2, "read_timeout": 3, "retries": {"max_attempts": 0}}
 _PING_MAX_TOKENS = 8  # a resolution ping just proves the (region, model) answers; keep it tiny
 
 # ---- OpenAI fallback (used ONLY when every Bedrock candidate fails) ---------------------- #
@@ -349,9 +351,10 @@ class LLMParser:
         import boto3  # deferred: no import cost unless the LLM parser is actually used
         from botocore.config import Config
 
-        return boto3.client(
-            "bedrock-runtime", region_name=region, config=Config(**_CLAUDE_TIMEOUT)
-        )
+        # Copy before Config(): botocore normalizes the retries dict IN PLACE, which
+        # would silently rewrite the shared module constant on first client build.
+        cfg = {**_CLAUDE_TIMEOUT, "retries": dict(_CLAUDE_TIMEOUT["retries"])}
+        return boto3.client("bedrock-runtime", region_name=region, config=Config(**cfg))
 
     def _ping(self, client, model_id: str) -> None:
         """Tiny converse proving THIS Claude id answers in THIS region. Raises on failure."""

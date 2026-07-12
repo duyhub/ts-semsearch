@@ -1442,3 +1442,9 @@ def test_gate_decision_deterministic(pois, monkeypatch):
     assert pipe._needs_llm("quan cafe") is True          # no diacritics -> call
     assert pipe._needs_llm("quán cà phê wjfi") is True   # OOV long token -> call
     assert pipe._needs_llm("cà phê có laptop") is True   # OOV English word -> call
+
+
+def test_claude_timeout_really_means_no_retries():
+    """Same botocore legacy-mode trap as embeddings: max_attempts=1 was one RETRY
+    (two attempts, 6.2s measured stall vs the intended 3s). 0 = single attempt."""
+    assert L._CLAUDE_TIMEOUT["retries"]["max_attempts"] == 0

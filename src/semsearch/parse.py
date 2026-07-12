@@ -113,6 +113,28 @@ PRICE_KEYWORDS: dict[str, str] = {
     "sang": "expensive", "luxury": "expensive",
 }
 
+# Nearest superlative: the query asks for THE closest match, so distance becomes a sort
+# directive in the anchor gate (SPEC §6), not a 0.3-weight preference the exp(-d/3km)
+# decay can saturate away (>8km every candidate reads ~0 and popularity decides). Keys
+# are >=2-token phrases on purpose: bare "gần" is the preposition ("gần hồ gươm" = near
+# X), never the superlative; matching is token-boundary + diacritic-compatible like
+# every other table, so unaccented "gan nhat" fires and "gắn"/"nhật" mismatches do not.
+NEAREST_KEYWORDS: tuple[str, ...] = ("gần nhất", "gần đây nhất", "nearest", "closest")
+
+# Folded tokens of every keyword phrase that NAMES a category (explicit place-type words
+# and need phrases alike): the words a query uses to say "Trạm xăng" are
+# {tram, xang, cay, tiem, dau, do, het, bom}. The pipeline uses this to mark residual
+# tokens as explained when the LLM parse fills a category the rules could not — a
+# leftover 'xang' names the category itself, it is not unexplained subject content.
+def _build_category_vocab() -> dict[str, frozenset[str]]:
+    vocab: dict[str, set[str]] = {}
+    for key, cat in {**CATEGORY_KEYWORDS, **NEED_KEYWORDS}.items():
+        vocab.setdefault(cat, set()).update(fold(key).split())
+    return {c: frozenset(t) for c, t in vocab.items()}
+
+
+CATEGORY_VOCAB_TOKENS: dict[str, frozenset[str]] = _build_category_vocab()
+
 # Attribute canonicalizer: DISPLAY (diacritic) query phrase -> canonical taxonomy
 # attribute (the fixed 10). Keys carry correct diacritics so matching is token-boundary
 # + diacritic-compatible (Fix 1): 'late' no longer fires inside 'chocolate', and 'đỗ xe'
@@ -291,6 +313,16 @@ class Parser:
                 consumed.update(fold(key).split())
         price_pref = "cheap" if "cheap" in price_dirs else ("expensive" if price_dirs else None)
 
+        # Nearest superlative ("gần nhất"): consumed like every other recognized phrase.
+        # Both tokens are stopword/common-dropped anyway, so consumption changes no
+        # residual today — it just keeps the invariant that matched vocab is explained.
+        nearest = False
+        for key in NEAREST_KEYWORDS:
+            if token_key_matches(hay, text, key):
+                nearest = True
+                consumed.update(fold(key).split())
+                break
+
         # Residual = query content the parse did NOT explain (after stopwords and the
         # Vietnamese common-word list, Fix 2). Its presence blocks the category hard-filter
         # (guards mis-parses P019/P055); its distinctive (rare) tokens become the subject
@@ -321,6 +353,7 @@ class Parser:
             soft_prefs=[],
             open_after=open_after,
             price_pref=price_pref,
+            nearest=nearest,
             city=city,
             district=district,
             content_terms=content_terms,

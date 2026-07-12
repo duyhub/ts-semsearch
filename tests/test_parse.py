@@ -375,3 +375,17 @@ def test_gas_need_still_ranks_gas_stations(pipe):
     _, results = pipe.search("tìm chỗ đổ xăng ở quận 1", k=10)
     assert results
     assert all(r.poi.category == "Trạm xăng" for r in results)
+
+
+# --- "gần nhất" nearest superlative flag (PRD FR-2; the 2026-07-12 fix) -----------
+
+def test_nearest_superlative_sets_flag(parser):
+    assert parser.parse("trạm xăng gần nhất").nearest is True
+    assert parser.parse("cho do xang gan nhat").nearest is True  # unaccented typing
+    assert parser.parse("nearest gas station").nearest is True
+
+
+def test_near_preposition_is_not_nearest(parser):
+    # "gần X" (near X) is a location preposition, not the superlative.
+    assert parser.parse("cafe gần hồ gươm").nearest is False
+    assert parser.parse("quán cà phê yên tĩnh làm việc").nearest is False
