@@ -259,6 +259,22 @@ const DEMO_URL = "demo link";
   /* clones: force final visual state */
   .mini [data-anim]{opacity:1 !important; transform:none !important; transition:none !important}
   .mini .fl{width:var(--w) !important; transition:none !important}
+  .print-only{display:none}
+
+  /* ---------- PDF / print export ---------- */
+  @page{size:13.333in 7.5in; margin:0}
+  @media print{
+    html,body{width:auto; height:auto; overflow:visible; background:var(--canvas)}
+    #progress,#counter,#hint,.navarrows,#overview{display:none !important}
+    #track{display:block; height:auto; transform:none !important; transition:none !important}
+    .slide{display:none !important}
+    .slide:not(.cut){display:flex !important; width:13.333in; height:7.5in; break-after:page; page-break-after:always}
+    .slide:not(.cut):last-of-type{break-after:auto; page-break-after:auto}
+    [data-anim]{opacity:1 !important; transform:none !important; transition:none !important}
+    .g2row .fl,.wrow .fl{width:var(--w) !important; transition:none !important}
+    .screen-only,#s3 .pdnav,#s3 .keyhint{display:none !important}
+    .print-only{display:inline !important}
+  }
 </style>
 </head>
 <body>
@@ -327,7 +343,7 @@ const DEMO_URL = "demo link";
 <!-- ============ 3 · KIẾN TRÚC ============ -->
 <section class="slide" id="s3" role="group" aria-roledescription="slide" aria-label="3 / 7 — Interactive workflow">
   <div class="eyebrow">Interactive query workflow</div>
-  <h2 class="title" data-anim>Choose a Vietnamese query — then follow it through every stage</h2>
+  <h2 class="title" data-anim><span class="screen-only">Choose a Vietnamese query — then follow it through every stage</span><span class="print-only">One Vietnamese query, traced through the six-stage pipeline</span></h2>
   <div class="pipequeries" id="pipeQueries" data-anim role="tablist" aria-label="Example queries"></div>
   <div class="pipe" data-anim role="tablist" aria-label="Pipeline layers"></div>
   <div id="pipeDetail" data-anim aria-live="polite"></div>
@@ -586,9 +602,13 @@ const DEMO_URL = "demo link";
   });
 
   /* ---------- count-ups ---------- */
+  function setCountFinal(el){
+    const to = parseFloat(el.dataset.to), dec = +(el.dataset.dec || 0);
+    el.textContent = to.toFixed(dec);
+  }
   function countUp(el){
     const to = parseFloat(el.dataset.to), dec = +(el.dataset.dec || 0);
-    if (reduced()) { el.textContent = to.toFixed(dec); return; }
+    if (reduced()) { setCountFinal(el); return; }
     const t0 = performance.now(), ms = 950;
     (function tick(now){
       const p = Math.min(1, (now - t0) / ms);
@@ -596,6 +616,7 @@ const DEMO_URL = "demo link";
       if (p < 1) requestAnimationFrame(tick);
     })(t0);
   }
+  window.addEventListener("beforeprint", () => document.querySelectorAll(".count").forEach(setCountFinal));
 
   /* ---------- slide activation ---------- */
   function activate(i){
