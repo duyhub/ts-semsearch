@@ -22,8 +22,10 @@ query ─▶ normalize (fold diacritics, expand abbreviations, fix typos ≤1 ed
 ```
 
 Signals: **6 map 1:1 to the sponsor's `Ranking_Signals`, plus `category`-fit and `price`
-preference** we added (9 total). Full write-up + the mapping: [`docs/methodology.md`](docs/methodology.md).
-Client adapter (Dart): [`clients/tasco_adapter.dart`](clients/tasco_adapter.dart). OpenAPI: `openapi.json`.
+preference** we added (9 total). Full write-up + the mapping: `docs/methodology.md`.
+Client adapters (drop-in, same `PlaceResult → SearchSuggestion` mapping):
+[Dart](clients/tasco_adapter.dart) · [Go](clients/tasco_adapter.go) ·
+[Node](clients/tasco_adapter.mjs) · [Python](clients/tasco_adapter.py). OpenAPI: `openapi.json`.
 
 Typo tolerance (Damerau/optimal-string-alignment edit distance ≤1, closed-vocabulary
 correction) runs entirely locally and deterministically — no network, no LLM — in every

@@ -38,6 +38,30 @@ ERROR_CODES = {  # SPEC §9 / tasco_api.pdf "Common error codes" table (verbatim
     408: "timeout", 429: "rate_limited", 500: "internal_error", 503: "service_unavailable",
 }
 
+# Swagger/ReDoc "Try it out" seeds. Illustrative need-based Vietnamese queries (the
+# canonical examples from PRD/CLAUDE.md) — NOT eval-set ground truth, and no query->id
+# mapping. Diacritics intact so a one-click try exercises the real Vietnamese path.
+Q_EXAMPLES = {
+    "quiet_cafe": {
+        "summary": "Quiet café to sit and work",
+        "value": "quán cà phê yên tĩnh để ngồi làm việc",
+    },
+    "date_spot_d1": {
+        "summary": "Romantic date spot in District 1",
+        "value": "nơi hẹn hò lãng mạn ở quận 1",
+    },
+    "pho_late_nearby": {
+        "summary": "Phở open late, near me (use with lat/lon)",
+        "value": "phở mở khuya gần đây",
+    },
+    "rooftop_view": {
+        "summary": "Rooftop bar with a view",
+        "value": "quán bar sân thượng ngắm cảnh đẹp",
+    },
+}
+# Bến Thành, District 1 — a sensible default anchor for the location-aware examples.
+LAT_EXAMPLE, LON_EXAMPLE = 10.7738, 106.7040
+
 
 # ---- DTOs (contract-exact) --------------------------------------------------
 class Coordinates(BaseModel):
@@ -344,18 +368,28 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     @app.get("/v1/geocode-search", response_model=SearchResponse)
     def search(
         request: Request,
-        q: Optional[str] = Query(None),
+        q: Optional[str] = Query(
+            None,
+            description="Vietnamese need-based query; diacritics preserved.",
+            openapi_examples=Q_EXAMPLES,
+        ),
         lat: Optional[float] = Query(
-            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon"
+            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon",
+            openapi_examples={"hcmc_d1": {"summary": "Bến Thành, District 1",
+                                          "value": LAT_EXAMPLE}},
         ),
         lon: Optional[float] = Query(
-            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat"
+            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat",
+            openapi_examples={"hcmc_d1": {"summary": "Bến Thành, District 1",
+                                          "value": LON_EXAMPLE}},
         ),
         radiusMeters: Optional[float] = Query(
             None, ge=0, description="Optional radius filter; requires both lat and lon"
         ),
         bbox: Optional[str] = None,
-        category: Optional[str] = None, limit: int = 10, lang: str = "vi",
+        category: Optional[str] = None,
+        limit: int = Query(10, description="Max results; clamped to 1–20 (default 10)"),
+        lang: str = Query("vi", description="Response language hint"),
         engine: str = "full",
         x_request_id: Optional[str] = Header(None),
     ):
@@ -378,18 +412,28 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
     @app.get("/v1/semantic-search", response_model=SemanticSearchResponse)
     def semantic_search(
         request: Request,
-        q: Optional[str] = Query(None),
+        q: Optional[str] = Query(
+            None,
+            description="Vietnamese need-based query; diacritics preserved.",
+            openapi_examples=Q_EXAMPLES,
+        ),
         lat: Optional[float] = Query(
-            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon"
+            None, ge=-90, le=90, description="WGS84 latitude; supply together with lon",
+            openapi_examples={"hcmc_d1": {"summary": "Bến Thành, District 1",
+                                          "value": LAT_EXAMPLE}},
         ),
         lon: Optional[float] = Query(
-            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat"
+            None, ge=-180, le=180, description="WGS84 longitude; supply together with lat",
+            openapi_examples={"hcmc_d1": {"summary": "Bến Thành, District 1",
+                                          "value": LON_EXAMPLE}},
         ),
         radiusMeters: Optional[float] = Query(
             None, ge=0, description="Optional radius filter; requires both lat and lon"
         ),
         bbox: Optional[str] = None,
-        category: Optional[str] = None, limit: int = 10, lang: str = "vi",
+        category: Optional[str] = None,
+        limit: int = Query(10, description="Max results; clamped to 1–20 (default 10)"),
+        lang: str = Query("vi", description="Response language hint"),
         x_request_id: Optional[str] = Header(None),
     ):
         parsed, err = _common(q, lat, lon, radiusMeters, bbox, category, limit, x_request_id)
