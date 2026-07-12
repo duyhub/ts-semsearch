@@ -48,7 +48,7 @@ LLM_PARSE_ENV = "SEMSEARCH_LLM_PARSE"
 # When a query resolves an explicit location anchor, "gần X" must mean near X:
 # near-anchor POIs rank first, far ones drop to the tail (recall preserved).
 ANCHOR_RADII_KM = (30.0, 150.0)  # try tight metro radius, then wider; else no gate
-from .parse import Parser
+from .parse import CATEGORY_VOCAB_TOKENS, Parser
 from .rank import DEFAULT_EVAL_NOW, DEFAULT_WEIGHTS, LinearRanker
 from .retrieve import BM25Index, DenseIndex, lexical_doc, rrf_fuse
 
@@ -74,6 +74,41 @@ def _has_diacritics(text: str) -> bool:
     if "đ" in text or "Đ" in text:
         return True
     return any(unicodedata.category(ch) == "Mn" for ch in unicodedata.normalize("NFD", text))
+
+
+def _rewrite_degrades(raw: QueryIntent, cand: QueryIntent) -> bool:
+    """True when the LLM's corrected text EXPLAINS LESS than the raw text — a lossy
+    rewrite. Live bug (2026-07-12): 'cho do xang gan nhat' was "corrected" to
+    'chỗ xăng gần nhất', dropping 'đổ'; the re-parse lost the need-keyword category and
+    leaked residual 'xang', silently disabling the category hard-filter. The prompt
+    forbids removing words but nothing enforced it. A correction may only keep or
+    improve the parse: never lose the category, never lose a matched attribute, never
+    leave more unexplained content than the raw text did."""
+    if raw.category is not None and cand.category is None:
+        return True
+    if any(a not in cand.required_attrs for a in raw.required_attrs):
+        return True
+    return len(cand.residual_terms) > len(raw.residual_terms)
+
+
+def _explain_llm_category_residual(intent: QueryIntent) -> QueryIntent:
+    """Drop residual tokens that literally NAME the intent's category (folded tokens of
+    its keyword vocabulary — 'xang' for Trạm xăng). Called only when the LLM filled a
+    category the rules could not: such tokens are the query SAYING the category, not
+    unexplained subject content, so they must not block the category hard-filter.
+    Foreign residual (a genuine mis-parse guard like P055's 'mua'/'sắm') is untouched."""
+    vocab = CATEGORY_VOCAB_TOKENS.get(intent.category or "", frozenset())
+    if not vocab or not intent.residual_terms:
+        return intent
+    residual = [t for t in intent.residual_terms if t not in vocab]
+    if len(residual) == len(intent.residual_terms):
+        return intent
+    return replace(
+        intent,
+        residual_terms=residual,
+        has_residual=bool(residual),
+        content_terms=[t for t in intent.content_terms if t in residual],
+    )
 
 
 def _attrs_folded(p: POI) -> set[str]:
@@ -301,8 +336,20 @@ class FullPipeline:
         corrected = (llm_out.get("corrected_query") or None) if self._query_rewrite else None
         if corrected == query_text:  # extra safety; _validate already no-ops exact matches
             corrected = None
-        rule_intent = self.parser.parse(corrected or query_text)  # parse the text we retrieve on
+        rule_intent = self.parser.parse(query_text)
+        if corrected is not None:
+            # Adopt the rewrite ONLY if its parse explains at least as much as the raw
+            # text's (never lose category/attrs, never grow residual) — a lossy rewrite
+            # is discarded outright and the query behaves exactly as with the parse off.
+            cand = self.parser.parse(corrected)
+            if _rewrite_degrades(rule_intent, cand):
+                corrected = None
+            else:
+                rule_intent = cand  # parse the text we retrieve on
         merged = merge_intent(rule_intent, llm_out)
+        if merged.category is not None and rule_intent.category is None:
+            # The category came from the LLM: residual tokens that name it are explained.
+            merged = _explain_llm_category_residual(merged)
         return replace(merged, raw=query_text, corrected_query=corrected)  # raw = ORIGINAL
 
     def rank_scored(self, query_text: str, *, intent: QueryIntent | None = None,
@@ -385,14 +432,29 @@ class FullPipeline:
     def _anchor_gate(self, ranked, intent):
         """Float near-anchor POIs to the top; far ones become the tail. Relax the
         radius if too few survive; if even the widest radius yields <3, skip the
-        gate (keep pure score order) rather than starve the result."""
+        gate (keep pure score order) rather than starve the result.
+
+        "gần nhất" (intent.nearest): the near head is SORTED by distance instead of
+        keeping score order — a superlative is a sort directive, and the exp(-d/tau)
+        distance signal saturates to ~0 past ~8km, where blended score order let a
+        farther-but-popular POI beat the nearest one. Category matches sort before
+        mismatches so a blocked category hard-filter can never surface the nearest
+        POI of the WRONG kind (the nearest ATM for a gas-station query)."""
         a = intent.anchor
+        def dist(t):
+            p = self.by_id[t[0]]
+            return haversine(a.lat, a.lon, p.lat, p.lon)
         def near(radius):
-            return [t for t in ranked if haversine(a.lat, a.lon, self.by_id[t[0]].lat,
-                                                    self.by_id[t[0]].lon) <= radius]
+            return [t for t in ranked if dist(t) <= radius]
         for radius in ANCHOR_RADII_KM:
             hits = near(radius)
             if len(hits) >= 3:
+                if intent.nearest:
+                    cat = intent.category
+                    hits.sort(key=lambda t: (
+                        0 if cat is None or self.by_id[t[0]].category == cat else 1,
+                        dist(t),
+                    ))
                 keep = {t[0] for t in hits}
                 far = [t for t in ranked if t[0] not in keep]  # both keep score order
                 return hits + far

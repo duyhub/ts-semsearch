@@ -72,6 +72,7 @@ class QueryIntent:
     open_after: str | None = None
     price_max: int | None = None
     price_pref: str | None = None  # "cheap" | "expensive" | None — parsed affordability direction
+    nearest: bool = False  # "gần nhất" superlative: distance is a sort directive, not a preference
     city: str | None = None
     district: str | None = None
     content_terms: list[str] = field(default_factory=list)  # distinctive leftover terms -> subject filter
