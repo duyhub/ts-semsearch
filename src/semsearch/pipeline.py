@@ -17,12 +17,13 @@ import logging
 import os
 import threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime
 from typing import Sequence
 
 from .config import VALID_MODES, resolve_llm_gate, resolve_mode, resolve_query_rewrite
-from .data import POI, QueryIntent, RankedResult, content_tokens
+from .data import POI, Anchor, QueryIntent, RankedResult, content_tokens
 from .embeddings import (
     BEDROCK_PROVIDERS,
     get_embedder,
@@ -207,6 +208,10 @@ class FullPipeline:
         # Latency gate: "auto" fires the LLM ONLY for degraded queries (see _needs_llm); "always"
         # keeps the every-query behavior. Resolved once here; inert when the parse is off.
         self._llm_gate = resolve_llm_gate()
+        # Overlaps the LLM parse with the query embed in resolve_and_rank — the two
+        # independent network calls on the request path (uvicorn serves threaded already;
+        # boto3 clients are thread-safe for calls).
+        self._bg = ThreadPoolExecutor(max_workers=4, thread_name_prefix="semsearch-embed")
 
     def _dense_for_mode(self, mode: str) -> DenseIndex | None:
         """Construction-time embeddings resolution per deployment mode — chosen ONCE,
@@ -365,6 +370,36 @@ class FullPipeline:
         retrieval_text = intent.corrected_query or query_text
         # one dense pass, reused below; the BM25-only floor (dense=None) has no dense opinion
         dense_ids = [pid for pid, _ in self.dense.search(retrieval_text)] if self.dense else []
+        return self._rank_with(query_text, intent, dense_ids)
+
+    def resolve_and_rank(self, query_text: str, *, fallback_anchor: Anchor | None = None,
+                         ) -> tuple[QueryIntent, list[tuple[str, float, dict[str, float]]]]:
+        """resolve_intent + rank in one call, OVERLAPPING the LLM parse with the query
+        embed — the two independent network calls on the request path. Serialized they
+        stack (measured 27.5s under a full Bedrock stall); overlapped, the worst case is
+        max(parse, embed). The raw-text embed is speculative: when an adopted rewrite
+        changes the retrieval text, the corrected text is embedded instead and the
+        speculative result is abandoned (its qcache entry still lands — harmless).
+        `fallback_anchor` is the caller's location, used ONLY when the query names none
+        (the API contract: an in-query location is more specific than the request focus).
+        Byte-identical results to the serial path (NFR-5): same texts, same dense_ids."""
+        fut = (self._bg.submit(self.dense.search, query_text)
+               if self.dense is not None else None)
+        intent = self.resolve_intent(query_text)
+        if fallback_anchor is not None and intent.anchor is None:
+            intent = replace(intent, anchor=fallback_anchor)
+        retrieval_text = intent.corrected_query or query_text
+        if self.dense is None:
+            dense_ids: list[str] = []
+        elif retrieval_text == query_text and fut is not None:
+            dense_ids = [pid for pid, _ in fut.result()]
+        else:  # adopted rewrite: retrieve on the corrected text; abandon the speculation
+            dense_ids = [pid for pid, _ in self.dense.search(retrieval_text)]
+        return intent, self._rank_with(query_text, intent, dense_ids)
+
+    def _rank_with(self, query_text: str, intent: QueryIntent, dense_ids: list[str],
+                   ) -> list[tuple[str, float, dict[str, float]]]:
+        retrieval_text = intent.corrected_query or query_text
         rel = self._relevance(retrieval_text, intent, dense_ids)
         out: list[tuple[str, float, dict[str, float]]] = []
         for p in self.pois:
@@ -465,9 +500,9 @@ class FullPipeline:
 
     def search(self, query_text: str, k: int = 10) -> tuple[QueryIntent, list[RankedResult]]:
         """Top-k results with per-signal breakdown + Vietnamese reasons (API/UI, FR-8)."""
-        intent = self.resolve_intent(query_text)  # resolved once; passed through to ranking
+        intent, scored = self.resolve_and_rank(query_text)  # LLM parse ∥ query embed
         results: list[RankedResult] = []
-        for pid, score, breakdown in self.rank_scored(query_text, intent=intent)[:k]:
+        for pid, score, breakdown in scored[:k]:
             poi = self.by_id[pid]
             results.append(
                 RankedResult(poi=poi, score=score, breakdown=breakdown,

@@ -575,3 +575,58 @@ def test_pin_region_no_creds_short_circuits_region_walk(monkeypatch):
     with pytest.raises(NoCredentialsError):
         emb._get_client()
     assert list(built) == ["ap-southeast-1"]  # walk stopped at region 1
+
+
+# --------------------------------------------------------------------------- #
+# Latency fixes (2026-07-12): no retries, short per-query timeout             #
+# --------------------------------------------------------------------------- #
+def test_bedrock_timeouts_really_mean_no_retries():
+    """botocore legacy-mode `max_attempts` counts RETRIES, not attempts: 1 meant one
+    retry on top of the initial call, doubling every stall (measured: a 10s read-stall
+    cost 20.5s). 0 is the value that matches the 'NO retries — we degrade, not stall'
+    comment."""
+    assert E._BEDROCK_TIMEOUT["retries"]["max_attempts"] == 0
+    assert E._BEDROCK_QUERY_TIMEOUT["retries"]["max_attempts"] == 0
+
+
+def test_query_timeout_is_interactive():
+    """The 10s read timeout is sized for the 111-doc matrix build; a per-query embed is
+    one tiny text on the interactive path — it must fail fast (<= 3s) into the BM25
+    degrade instead of stalling the demo."""
+    assert E._BEDROCK_QUERY_TIMEOUT["read_timeout"] <= 3
+    assert E._BEDROCK_TIMEOUT["read_timeout"] >= E._BEDROCK_QUERY_TIMEOUT["read_timeout"]
+
+
+def test_query_embed_routes_to_the_query_client():
+    """input_type='search_query' must use the short-timeout query client; document
+    embeds keep the doc client. Both fakes injected — offline, no boto3."""
+    emb = E.BedrockEmbedder("bedrock-cohere")
+    emb._region = "ap-southeast-1"
+    doc_client = FakeBedrockClient(cohere_responder())
+    q_client = FakeBedrockClient(cohere_responder())
+    emb._client = doc_client
+    emb._qclient = q_client
+
+    emb.embed(["một truy vấn"], input_type="search_query")
+    assert len(q_client.calls) == 1 and len(doc_client.calls) == 0
+
+    emb.embed(["một tài liệu"], input_type="search_document")
+    assert len(q_client.calls) == 1 and len(doc_client.calls) == 1
+
+
+def test_query_client_built_with_query_timeout(monkeypatch):
+    """_get_client(query=True) constructs the query client from _BEDROCK_QUERY_TIMEOUT
+    for the already-pinned region (no re-walk)."""
+    captured: list[dict] = []
+
+    def fake_make_client(region, *, timeout=None):
+        captured.append({"region": region, "timeout": timeout})
+        return FakeBedrockClient(cohere_responder())
+
+    monkeypatch.setattr(E.BedrockEmbedder, "_make_client", staticmethod(fake_make_client))
+    emb = E.BedrockEmbedder("bedrock-cohere")
+    emb._region = "ap-northeast-1"
+    emb._client = FakeBedrockClient(cohere_responder())  # already pinned: no walk
+    client = emb._get_client(query=True)
+    assert isinstance(client, FakeBedrockClient)
+    assert captured == [{"region": "ap-northeast-1", "timeout": E._BEDROCK_QUERY_TIMEOUT}]

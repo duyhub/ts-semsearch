@@ -297,3 +297,58 @@ def test_nearest_sort_never_surfaces_wrong_category(pipe):
                          anchor=Anchor(name=COORD_ANCHOR_NAME, lat=10.7769, lon=106.7009))
     ranked = pipe.rank_scored("cho do xang gan nhat", intent=intent)
     assert pipe.by_id[ranked[0][0]].category == "Trạm xăng"
+
+
+# --- LLM parse ∥ query embed concurrency (2026-07-12 latency fix) -----------------
+def test_resolve_and_rank_overlaps_llm_and_embed(pipe, monkeypatch):
+    # The LLM parse and the query embed are independent network calls; serialized they
+    # stack (~27s measured under a full stall). resolve_and_rank must overlap them:
+    # two 0.4s stages complete in well under their 0.8s sum.
+    import time as _t
+
+    class _SlowLLM:
+        def parse(self, text):
+            _t.sleep(0.4)
+            return {"corrected_query": None, "category": None, "attributes": [],
+                    "price_pref": None, "open_after": None}
+
+    real_search = pipe.dense.search
+
+    def slow_search(text, k=None):
+        _t.sleep(0.4)
+        return real_search(text, k)
+
+    monkeypatch.setattr(pipe, "_llm_parser", _SlowLLM())
+    monkeypatch.setattr(pipe, "_llm_gate", "always")
+    monkeypatch.setattr(pipe, "_query_rewrite", True)
+    monkeypatch.setattr(pipe.dense, "search", slow_search)
+    t0 = _t.perf_counter()
+    intent, ranked = pipe.resolve_and_rank("quán cà phê yên tĩnh")
+    assert _t.perf_counter() - t0 < 0.7
+    assert ranked and intent.category == "Quán cà phê"
+
+
+def test_resolve_and_rank_matches_serial_path(pipe):
+    q = "quán cà phê yên tĩnh làm việc"
+    intent, ranked = pipe.resolve_and_rank(q)
+    serial = pipe.rank_scored(q)
+    assert [t[0] for t in ranked] == [t[0] for t in serial]
+
+
+def test_resolve_and_rank_injects_fallback_anchor(pipe):
+    # The API's "use the caller's location when the query names none" contract moves
+    # into resolve_and_rank: same anchor, same ranking as the manual-injection path.
+    q = "cho do xang gan nhat"
+    fb = Anchor(name=COORD_ANCHOR_NAME, lat=10.8411, lon=106.8098)
+    intent, ranked = pipe.resolve_and_rank(q, fallback_anchor=fb)
+    assert intent.anchor == fb
+    manual = pipe.rank_scored(q, intent=replace(pipe.resolve_intent(q), anchor=fb))
+    assert [t[0] for t in ranked] == [t[0] for t in manual]
+
+
+def test_resolve_and_rank_query_anchor_wins_over_fallback(pipe):
+    # A location named IN the query is more specific than the request focus.
+    q = "quán cà phê gần hồ gươm"
+    fb = Anchor(name=COORD_ANCHOR_NAME, lat=10.7769, lon=106.7009)  # HCMC
+    intent, _ = pipe.resolve_and_rank(q, fallback_anchor=fb)
+    assert intent.anchor is not None and intent.anchor.name != COORD_ANCHOR_NAME

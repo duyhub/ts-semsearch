@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import replace
 from datetime import datetime
 from typing import Optional
 
@@ -205,19 +204,13 @@ def create_app(pois: Optional[list[POI]] = None, *, now: datetime = DEFAULT_EVAL
             ranked = [(pid, 0.0, {}) for pid in pipeline.bm25.rank_ids(q)]
         else:
             # Resolve the intent ONCE and pass it through: ranking, the /v1/semantic-search
-            # intent echo, and reasons[] must all read the SAME object. A rule-only re-parse
-            # here + LLM-merged re-resolution inside rank_scored would contradict each other
-            # whenever SEMSEARCH_LLM_PARSE=bedrock enriches the parse.
-            intent = pipeline.resolve_intent(q)
-            # A location explicitly named/pasted in the query is more specific than the
-            # request focus. Otherwise, use the caller's current/selected location as the
-            # distance anchor so proximity affects ranking, explanations, and the intent echo.
-            if ref is not None and intent.anchor is None:
-                intent = replace(
-                    intent,
-                    anchor=Anchor(name=COORD_ANCHOR_NAME, lat=ref[0], lon=ref[1]),
-                )
-            ranked = pipeline.rank_scored(q, intent=intent)  # full corpus, (id, score, breakdown)
+            # intent echo, and reasons[] must all read the SAME object. resolve_and_rank
+            # overlaps the LLM parse with the query embed (the two network calls) and
+            # applies the caller's location as the distance anchor ONLY when the query
+            # names none — an in-query location is more specific than the request focus.
+            fallback = (Anchor(name=COORD_ANCHOR_NAME, lat=ref[0], lon=ref[1])
+                        if ref is not None else None)
+            intent, ranked = pipeline.resolve_and_rank(q, fallback_anchor=fallback)
 
         def _passes(poi: POI) -> bool:
             """The caller's explicit category / bbox / radius window (radius=0 is an

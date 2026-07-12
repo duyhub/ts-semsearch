@@ -47,7 +47,13 @@ BEDROCK_PROVIDERS = ("bedrock-cohere", "bedrock-titan")
 COHERE_MAX_BATCH = 96  # Cohere embed on Bedrock accepts up to 96 texts/call
 # HARD RULE (CLAUDE.md): Bedrock calls carry a timeout so a dead network fails fast
 # (<= connect+read ≈ 12s) instead of hanging the demo. No retries — we degrade, not stall.
-_BEDROCK_TIMEOUT = {"connect_timeout": 2, "read_timeout": 10, "retries": {"max_attempts": 1}}
+# botocore legacy-mode `max_attempts` counts RETRIES on top of the initial call (verified
+# 2026-07-12 against a stalled endpoint: 1 -> two attempts, 20.5s); 0 = single attempt.
+_BEDROCK_TIMEOUT = {"connect_timeout": 2, "read_timeout": 10, "retries": {"max_attempts": 0}}
+# Per-QUERY embeds sit on the interactive path (one tiny text, ~100ms healthy): fail fast
+# into the BM25 degrade instead of stalling the demo. The 10s read above is sized for the
+# 111-doc matrix build only.
+_BEDROCK_QUERY_TIMEOUT = {"connect_timeout": 2, "read_timeout": 3, "retries": {"max_attempts": 0}}
 
 # --------------------------------------------------------------------------- #
 # Bedrock region-fallback chain (FR-10). Shared by BOTH consumers — embeddings #
@@ -211,16 +217,20 @@ class BedrockEmbedder:
         self.provider = provider
         self.model_id = MODEL_IDS[provider]
         self._client = None  # lazy (no boto3 import / cred lookup until first embed)
+        self._qclient = None  # query-path twin: same region, _BEDROCK_QUERY_TIMEOUT
         self._region: str | None = None  # pinned by _pin_region on first use (region walk)
 
     @staticmethod
-    def _make_client(region: str):
+    def _make_client(region: str, *, timeout: dict | None = None):
         import boto3  # deferred: no import cost unless a bedrock provider is selected
         from botocore.config import Config
 
-        return boto3.client(
-            "bedrock-runtime", region_name=region, config=Config(**_BEDROCK_TIMEOUT)
-        )
+        # Copy before Config(): botocore NORMALIZES the retries dict IN PLACE
+        # ({'max_attempts': 0} -> {'total_max_attempts': 1, 'mode': 'legacy'}), which
+        # would silently rewrite the shared module constant on first client build.
+        cfg = {**(timeout or _BEDROCK_TIMEOUT)}
+        cfg["retries"] = dict(cfg["retries"])
+        return boto3.client("bedrock-runtime", region_name=region, config=Config(**cfg))
 
     def _probe(self, client) -> None:
         """One tiny invoke_model proving THIS embedding model works in THIS region. Raises on
@@ -265,10 +275,19 @@ class BedrockEmbedder:
             return self._client
         raise last_exc if last_exc is not None else RuntimeError("no bedrock regions configured")
 
-    def _get_client(self):
+    def _get_client(self, *, query: bool = False):
         if self._client is None:
             self._pin_region()
-        return self._client
+        if not query:
+            return self._client
+        if self._qclient is None:
+            if self._region is None:
+                # A client was injected directly (tests/fakes) without a region pin:
+                # there is nothing to build a query twin FROM — serve queries on it.
+                return self._client
+            # same pinned region, interactive timeout — no re-walk
+            self._qclient = self._make_client(self._region, timeout=_BEDROCK_QUERY_TIMEOUT)
+        return self._qclient
 
     def embed(self, texts: Sequence[str], *, input_type: str = "search_document") -> np.ndarray:
         texts = list(texts)
@@ -282,12 +301,12 @@ class BedrockEmbedder:
             raw = (
                 self._embed_cohere(texts, input_type)
                 if self.provider == "bedrock-cohere"
-                else self._embed_titan(texts)
+                else self._embed_titan(texts, input_type)
             )
         return _l2_normalize(np.asarray(raw, dtype=np.float32))
 
     def _embed_cohere(self, texts: list[str], input_type: str) -> list[list[float]]:
-        client = self._get_client()
+        client = self._get_client(query=input_type == "search_query")
         out: list[list[float]] = []
         for start in range(0, len(texts), COHERE_MAX_BATCH):
             batch = texts[start : start + COHERE_MAX_BATCH]
@@ -296,8 +315,8 @@ class BedrockEmbedder:
             out.extend(json.loads(resp["body"].read())["embeddings"])
         return out
 
-    def _embed_titan(self, texts: list[str]) -> list[list[float]]:
-        client = self._get_client()
+    def _embed_titan(self, texts: list[str], input_type: str = "search_document") -> list[list[float]]:
+        client = self._get_client(query=input_type == "search_query")
         out: list[list[float]] = []
         for text in texts:  # Titan v2 embeds exactly one inputText per invoke
             body = json.dumps({"inputText": text, "dimensions": self.dim, "normalize": True})
