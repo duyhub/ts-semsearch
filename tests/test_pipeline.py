@@ -1,9 +1,12 @@
 """Full-pipeline behavior tests (SPEC §5-6)."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
-from semsearch.data import QueryIntent, content_tokens, load_pois
+from semsearch.data import Anchor, QueryIntent, content_tokens, load_pois
+from semsearch.geo import COORD_ANCHOR_NAME, haversine
 from semsearch.pipeline import FullPipeline
 from semsearch.rank import load_weights
 
@@ -202,3 +205,150 @@ def test_full_corroboration_still_filters(pipe):
     dense_ids = ["R003"] + [p.poi_id for p in pipe.pois if p.poi_id != "R003"]
     kept = pipe._constraint_filter(ranked, intent, dense_ids)
     assert all({"bun", "cha"} <= content_tokens(pipe.by_id[t[0]]) for t in kept)
+
+
+# --- LLM rewrite / merge robustness (the 2026-07-12 gas-station bug) -------------
+class _FakeLLM:
+    """Stands in for LLMParser: returns a fixed, already-validated parse dict."""
+
+    def __init__(self, out: dict):
+        self._out = out
+
+    def parse(self, text: str) -> dict:
+        return dict(self._out)
+
+
+def _with_llm(monkeypatch, pipe, out: dict) -> None:
+    monkeypatch.setattr(pipe, "_llm_parser", _FakeLLM(out))
+    monkeypatch.setattr(pipe, "_query_rewrite", True)
+    monkeypatch.setattr(pipe, "_llm_gate", "always")
+
+
+def test_lossy_llm_rewrite_is_rejected(pipe, monkeypatch):
+    # Live bug (2026-07-12): Haiku "corrected" 'cho do xang gan nhat' to
+    # 'chỗ xăng gần nhất' — DROPPING 'đổ'. Re-parsing the corrected text loses the
+    # need-keyword category and leaks residual 'xang', which silently disables the
+    # category hard-filter (hotels/ATMs flooded the results). A rewrite whose parse
+    # explains LESS than the raw text's parse must be discarded entirely.
+    _with_llm(monkeypatch, pipe, {
+        "corrected_query": "chỗ xăng gần nhất", "category": "Trạm xăng",
+        "attributes": [], "price_pref": None, "open_after": None})
+    intent = pipe.resolve_intent("cho do xang gan nhat")
+    assert intent.corrected_query is None  # lossy rewrite rejected
+    assert intent.category == "Trạm xăng"
+    assert not intent.has_residual  # the raw parse fully explains the query
+
+
+def test_faithful_llm_rewrite_is_kept(pipe, monkeypatch):
+    # The guard must not over-reject: a faithful diacritic restoration parses at least
+    # as well as the raw text and stays adopted (it feeds BM25/dense retrieval).
+    _with_llm(monkeypatch, pipe, {
+        "corrected_query": "chỗ đổ xăng gần nhất", "category": "Trạm xăng",
+        "attributes": [], "price_pref": None, "open_after": None})
+    intent = pipe.resolve_intent("cho do xang gan nhat")
+    assert intent.corrected_query == "chỗ đổ xăng gần nhất"
+    assert intent.category == "Trạm xăng"
+    assert not intent.has_residual
+
+
+def test_llm_category_explains_its_own_vocab_residual(pipe, monkeypatch):
+    # Bare 'xăng' matches no rule keyword (all petrol keywords are bigrams), so the
+    # rule parse leaves category=None and residual=['xang'] — blocking the category
+    # hard-filter even when the LLM correctly names Trạm xăng. A residual token that
+    # literally NAMES the LLM-filled category is explained, not leftover content:
+    # dropping it re-enables the hard-filter, so only gas stations are returned.
+    _with_llm(monkeypatch, pipe, {
+        "corrected_query": None, "category": "Trạm xăng",
+        "attributes": [], "price_pref": None, "open_after": None})
+    intent = pipe.resolve_intent("xang gan nhat")
+    assert intent.category == "Trạm xăng"
+    assert not intent.has_residual
+    ranked = pipe.rank_scored("xang gan nhat", intent=intent)
+    assert {pipe.by_id[pid].category for pid, _, _ in ranked} == {"Trạm xăng"}
+
+
+# --- "gần nhất" nearest superlative (the Thu Đức saturation bug) ------------------
+def test_nearest_query_ranks_true_nearest_gas_first(pipe):
+    # At Thu Đức / Galaxy Innovation Park every gas station sits > 8km out, where the
+    # exp(-d/3km) distance signal saturates to ~0 — blended score order put a farther,
+    # more popular station first (13.3km before 10.3km). 'gần nhất' is a sort
+    # directive: the nearest matching POI must win outright.
+    lat, lon = 10.8411, 106.8098
+    intent = pipe.resolve_intent("cho do xang gan nhat")
+    assert intent.anchor is None  # no in-query location: API injects the user's
+    anchored = replace(intent, anchor=Anchor(name=COORD_ANCHOR_NAME, lat=lat, lon=lon))
+    ranked = pipe.rank_scored("cho do xang gan nhat", intent=anchored)
+    top = [pipe.by_id[pid] for pid, _, _ in ranked[:3]]
+    assert all(p.category == "Trạm xăng" for p in top)
+    gas = [p for p in pipe.pois if p.category == "Trạm xăng"]
+    nearest = min(gas, key=lambda p: haversine(lat, lon, p.lat, p.lon))
+    assert top[0].poi_id == nearest.poi_id
+    dists = [haversine(lat, lon, p.lat, p.lon) for p in top]
+    assert dists == sorted(dists)  # near head is distance-ordered
+
+
+def test_nearest_sort_never_surfaces_wrong_category(pipe):
+    # Defense in depth: when genuine residual blocks the category hard-filter, the
+    # nearest sort must not float the nearest POI of the WRONG kind (an ATM 200m away)
+    # over the gas stations the query asked for — category outranks distance.
+    intent = QueryIntent(raw="cho do xang gan nhat", normalized="cho do xang gan nhat",
+                         category="Trạm xăng", nearest=True,
+                         has_residual=True, residual_terms=["zzz"],
+                         anchor=Anchor(name=COORD_ANCHOR_NAME, lat=10.7769, lon=106.7009))
+    ranked = pipe.rank_scored("cho do xang gan nhat", intent=intent)
+    assert pipe.by_id[ranked[0][0]].category == "Trạm xăng"
+
+
+# --- LLM parse ∥ query embed concurrency (2026-07-12 latency fix) -----------------
+def test_resolve_and_rank_overlaps_llm_and_embed(pipe, monkeypatch):
+    # The LLM parse and the query embed are independent network calls; serialized they
+    # stack (~27s measured under a full stall). resolve_and_rank must overlap them:
+    # two 0.4s stages complete in well under their 0.8s sum.
+    import time as _t
+
+    class _SlowLLM:
+        def parse(self, text):
+            _t.sleep(0.4)
+            return {"corrected_query": None, "category": None, "attributes": [],
+                    "price_pref": None, "open_after": None}
+
+    real_search = pipe.dense.search
+
+    def slow_search(text, k=None):
+        _t.sleep(0.4)
+        return real_search(text, k)
+
+    monkeypatch.setattr(pipe, "_llm_parser", _SlowLLM())
+    monkeypatch.setattr(pipe, "_llm_gate", "always")
+    monkeypatch.setattr(pipe, "_query_rewrite", True)
+    monkeypatch.setattr(pipe.dense, "search", slow_search)
+    t0 = _t.perf_counter()
+    intent, ranked = pipe.resolve_and_rank("quán cà phê yên tĩnh")
+    assert _t.perf_counter() - t0 < 0.7
+    assert ranked and intent.category == "Quán cà phê"
+
+
+def test_resolve_and_rank_matches_serial_path(pipe):
+    q = "quán cà phê yên tĩnh làm việc"
+    intent, ranked = pipe.resolve_and_rank(q)
+    serial = pipe.rank_scored(q)
+    assert [t[0] for t in ranked] == [t[0] for t in serial]
+
+
+def test_resolve_and_rank_injects_fallback_anchor(pipe):
+    # The API's "use the caller's location when the query names none" contract moves
+    # into resolve_and_rank: same anchor, same ranking as the manual-injection path.
+    q = "cho do xang gan nhat"
+    fb = Anchor(name=COORD_ANCHOR_NAME, lat=10.8411, lon=106.8098)
+    intent, ranked = pipe.resolve_and_rank(q, fallback_anchor=fb)
+    assert intent.anchor == fb
+    manual = pipe.rank_scored(q, intent=replace(pipe.resolve_intent(q), anchor=fb))
+    assert [t[0] for t in ranked] == [t[0] for t in manual]
+
+
+def test_resolve_and_rank_query_anchor_wins_over_fallback(pipe):
+    # A location named IN the query is more specific than the request focus.
+    q = "quán cà phê gần hồ gươm"
+    fb = Anchor(name=COORD_ANCHOR_NAME, lat=10.7769, lon=106.7009)  # HCMC
+    intent, _ = pipe.resolve_and_rank(q, fallback_anchor=fb)
+    assert intent.anchor is not None and intent.anchor.name != COORD_ANCHOR_NAME
