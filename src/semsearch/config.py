@@ -43,7 +43,7 @@ VALID_MODES = ("local", "local-first", "cloud")
 #  passed to FullPipeline is an EXPERT override that skips mode resolution     #
 #  for embeddings entirely (eval/gates use it to stay pinned to local).        #
 # ============================================================================ #
-DEFAULT_MODE = "cloud"
+DEFAULT_MODE = "local-first"
 
 
 def resolve_mode() -> str:
