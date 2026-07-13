@@ -1,5 +1,7 @@
 # Tasco Semantic Search & Ranking
 
+![Tasco.tìm — search results for "doi bung qua" (no diacritics, "I'm starving") resolved to nhà hàng (restaurant) results, ranked with reasons and the result map](docs/screenshots/ui-demo.png)
+
 AI retrieval + ranking engine for Vietnamese POI search. Understands query *intent*
 ("quán cà phê yên tĩnh để làm việc" — a quiet café to work from), not just keywords,
 and returns ranked results **with explanations**. Integration-ready with the Tasco Maps
@@ -141,8 +143,8 @@ The engine has one switch for how it sources models — `DEFAULT_MODE` in
 | Mode | Embeddings | LLM query parse |
 |---|---|---|
 | `local` | local bge-m3 only; cloud never contacted | off (deterministic) |
-| `local-first` | local, degrading to Bedrock (cohere→titan, region chain) if bge-m3 is broken | off |
-| `cloud` (default) | Bedrock only — local never loaded (no 2.3 GB model needed); all-fail → BM25-only floor | **on** by default (Claude, else OpenAI) |
+| `local-first` (default) | local, degrading to Bedrock (cohere→titan, region chain) if bge-m3 is broken | off |
+| `cloud` | Bedrock only — local never loaded (no 2.3 GB model needed); all-fail → BM25-only floor | **on** by default (Claude, else OpenAI) |
 
 `SEMSEARCH_LLM_PARSE` always wins over the mode default: `off` forces it off, `on`/`bedrock`
 force it on (full Bedrock→OpenAI chain), `openai` forces it on pinning OpenAI directly
@@ -172,7 +174,8 @@ resolved (`mode`, `embeddings`, `llm_parse`, `llm_gate`, `query_rewrite`);
 
 Public demo link for judges — no GPU, no model download. Connect the repo on
 [railway.com](https://railway.com); Railway auto-detects the `Dockerfile` (config in
-`railway.json`). The image ships `SEMSEARCH_MODE=cloud` (the code default), so embeddings
+`railway.json`). The image explicitly sets `SEMSEARCH_MODE=cloud` (overriding the
+code default of `local-first`, which needs the 2.3 GB local model), so embeddings
 come from Bedrock and the local `bge-m3`/torch stack is excluded — the image is ~650 MB and
 cold-boots in ~5 s (`/health` gate, `healthcheckTimeout` 120 s covers Bedrock prewarm).
 

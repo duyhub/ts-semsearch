@@ -2,8 +2,9 @@
 # ---------------------------------------------------------------------------
 # Tasco Semantic Search & Ranking — production image for the Railway demo.
 #
-# Runs in SEMSEARCH_MODE=cloud (the code default): embeddings come from Bedrock
-# (cohere -> titan, region chain) and the LLM parse from Bedrock Claude / OpenAI.
+# Runs in SEMSEARCH_MODE=cloud (explicitly set below, overriding the code
+# default of local-first): embeddings come from Bedrock (cohere -> titan,
+# region chain) and the LLM parse from Bedrock Claude / OpenAI.
 # The local bge-m3 provider is NEVER imported in cloud mode (see
 # src/semsearch/embeddings.py: `from sentence_transformers import ...` is lazy,
 # inside LocalEmbedder._ensure), so this image deliberately EXCLUDES the entire

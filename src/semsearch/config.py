@@ -18,20 +18,20 @@ VALID_MODES = ("local", "local-first", "cloud")
 #                                                                              #
 #  Edit this line (or set SEMSEARCH_MODE=<mode>) to switch the engine:         #
 #                                                                              #
-#  "local"        Today's posture. Embeddings run on the local                 #
-#                 bge-m3 model; the cloud is never contacted for embeddings;   #
-#                 a broken local setup fails LOUDLY at construction (it is a   #
-#                 setup bug, not a runtime condition). LLM query parse is OFF  #
-#                 by default (deterministic /v1/search, NFR-5).                #
+#  "local"        Embeddings run on the local bge-m3 model; the cloud is       #
+#                 never contacted for embeddings; a broken local setup fails   #
+#                 LOUDLY at construction (it is a setup bug, not a runtime     #
+#                 condition). LLM query parse is OFF by default (deterministic #
+#                 /v1/search, NFR-5).                                          #
 #                                                                              #
-#  "local-first"  Prefer local, degrade to the cloud. bge-m3 is probed at      #
-#                 construction; if it fails (model missing on this host), a    #
-#                 loud warning is logged and the cloud chain takes over        #
-#                 (bedrock-cohere then bedrock-titan, each walking the region  #
-#                 fallback chain). Everything failing lands on the BM25-only   #
-#                 floor. LLM parse stays OFF by default.                       #
+#  "local-first"  (default) Prefer local, degrade to the cloud. bge-m3 is      #
+#                 probed at construction; if it fails (model missing on this   #
+#                 host), a loud warning is logged and the cloud chain takes    #
+#                 over (bedrock-cohere then bedrock-titan, each walking the    #
+#                 region fallback chain). Everything failing lands on the      #
+#                 BM25-only floor. LLM parse stays OFF by default.             #
 #                                                                              #
-#  "cloud"        (default) Remote hosting without the 2.3 GB local model:     #
+#  "cloud"        Remote hosting without the 2.3 GB local model:               #
 #                 local is NEVER attempted (sentence_transformers is never     #
 #                 imported). Embeddings walk bedrock-cohere -> bedrock-titan   #
 #                 across the region chain; all failing -> BM25-only floor with #

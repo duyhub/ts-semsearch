@@ -12,5 +12,6 @@ personas/cache/
 .idea/
 .nimbalyst/
 *.png
+!docs/screenshots/*.png
 .playwright-mcp
 *.mp4
